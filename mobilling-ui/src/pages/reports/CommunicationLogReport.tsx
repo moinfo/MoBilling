@@ -41,10 +41,27 @@ export default function CommunicationLogReport() {
         <>
           <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }}>
             <StatCard label="Total Messages" value={r.total} icon={<IconMail size={24} />} color="blue" />
-            <StatCard label="Delivered" value={r.total_sent} icon={<IconCheck size={24} />} color="green" />
+            <StatCard label="Sent (API accepted)" value={r.total_sent} icon={<IconCheck size={24} />} color="green" />
             <StatCard label="Failed" value={r.total_failed} icon={<IconX size={24} />} color="red" />
-            <StatCard label="Delivery Rate" value={`${r.overall_delivery_rate}%`} icon={<IconPercentage size={24} />} color={r.overall_delivery_rate >= 90 ? 'teal' : 'orange'} />
+            <StatCard label="Sent Rate" value={`${r.overall_delivery_rate}%`} icon={<IconPercentage size={24} />} color={r.overall_delivery_rate >= 90 ? 'teal' : 'orange'} />
           </SimpleGrid>
+
+          {r.total_delivery_tracked > 0 && (
+            <SimpleGrid cols={{ base: 1, xs: 2 }}>
+              <StatCard
+                label="Confirmed Delivered (SMS/WhatsApp via MoSMS)"
+                value={r.total_delivered}
+                icon={<IconCheck size={24} />}
+                color="teal"
+              />
+              <StatCard
+                label="Real Delivery Rate"
+                value={r.overall_real_delivery_rate !== null ? `${r.overall_real_delivery_rate}%` : '—'}
+                icon={<IconPercentage size={24} />}
+                color={(r.overall_real_delivery_rate ?? 0) >= 90 ? 'teal' : 'orange'}
+              />
+            </SimpleGrid>
+          )}
 
           <Paper withBorder p="md">
             <Text fw={600} mb="md">Daily Volume</Text>
@@ -71,7 +88,8 @@ export default function CommunicationLogReport() {
                     <Table.Th ta="right">Total</Table.Th>
                     <Table.Th ta="right">Sent</Table.Th>
                     <Table.Th ta="right">Failed</Table.Th>
-                    <Table.Th ta="right">Rate</Table.Th>
+                    <Table.Th ta="right">Delivered</Table.Th>
+                    <Table.Th ta="right">Real Rate</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -81,7 +99,8 @@ export default function CommunicationLogReport() {
                       <Table.Td ta="right">{ch.total}</Table.Td>
                       <Table.Td ta="right" c="green">{ch.sent}</Table.Td>
                       <Table.Td ta="right" c="red">{ch.failed}</Table.Td>
-                      <Table.Td ta="right">{ch.delivery_rate}%</Table.Td>
+                      <Table.Td ta="right" c="teal">{ch.delivery_tracked > 0 ? ch.delivered : '—'}</Table.Td>
+                      <Table.Td ta="right">{ch.real_delivery_rate !== null ? `${ch.real_delivery_rate}%` : '—'}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -126,6 +145,7 @@ export default function CommunicationLogReport() {
                     <Table.Th>Client</Table.Th>
                     <Table.Th>Subject</Table.Th>
                     <Table.Th>Status</Table.Th>
+                    <Table.Th>Delivery</Table.Th>
                     <Table.Th>Error</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -143,8 +163,21 @@ export default function CommunicationLogReport() {
                           {m.status}
                         </Badge>
                       </Table.Td>
+                      <Table.Td>
+                        {m.delivery_status ? (
+                          <Badge
+                            color={m.delivery_status === 'delivered' || m.delivery_status === 'read' ? 'teal' : m.delivery_status === 'failed' ? 'red' : 'gray'}
+                            variant="light"
+                            tt="capitalize"
+                          >
+                            {m.delivery_status}
+                          </Badge>
+                        ) : (
+                          <Text size="xs" c="dimmed">not tracked</Text>
+                        )}
+                      </Table.Td>
                       <Table.Td maw={150} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} c="red">
-                        {m.error || '-'}
+                        {m.delivery_error || m.error || '-'}
                       </Table.Td>
                     </Table.Tr>
                   ))}

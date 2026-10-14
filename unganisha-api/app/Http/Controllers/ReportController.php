@@ -832,12 +832,21 @@ class ReportController extends Controller
             $sent = $group->where('status', 'sent')->count();
             $failed = $group->where('status', 'failed')->count();
             $total = $group->count();
+            // Only SMS/WhatsApp through MoSMS carry a real delivery_status today (email
+            // and direct-Meta/other-gateway sends have none — excluded from this rate
+            // rather than silently counted as "not delivered").
+            $tracked = $group->whereNotNull('delivery_status')->count();
+            $delivered = $group->where('delivery_status', 'delivered')->count();
             return [
                 'channel' => $channel,
                 'total' => $total,
                 'sent' => $sent,
                 'failed' => $failed,
+                // Kept for backwards compatibility — this is "API call succeeded", not real delivery.
                 'delivery_rate' => $total > 0 ? round(($sent / $total) * 100, 1) : 0,
+                'delivery_tracked' => $tracked,
+                'delivered' => $delivered,
+                'real_delivery_rate' => $tracked > 0 ? round(($delivered / $tracked) * 100, 1) : null,
             ];
         })->values();
 
@@ -864,6 +873,8 @@ class ReportController extends Controller
         $totalSent = $logs->where('status', 'sent')->count();
         $totalFailed = $logs->where('status', 'failed')->count();
         $total = $logs->count();
+        $totalTracked = $logs->whereNotNull('delivery_status')->count();
+        $totalDelivered = $logs->where('delivery_status', 'delivered')->count();
 
         // Supporting data: individual messages
         $messages = CommunicationLog::with('client')
@@ -881,6 +892,9 @@ class ReportController extends Controller
                 'subject' => $l->subject,
                 'status' => $l->status,
                 'error' => $l->error,
+                'delivery_status' => $l->delivery_status,
+                'delivered_at' => $l->delivered_at?->format('Y-m-d H:i'),
+                'delivery_error' => $l->delivery_error,
             ]);
 
         return response()->json([
@@ -891,6 +905,9 @@ class ReportController extends Controller
             'total_sent' => $totalSent,
             'total_failed' => $totalFailed,
             'overall_delivery_rate' => $total > 0 ? round(($totalSent / $total) * 100, 1) : 0,
+            'total_delivery_tracked' => $totalTracked,
+            'total_delivered' => $totalDelivered,
+            'overall_real_delivery_rate' => $totalTracked > 0 ? round(($totalDelivered / $totalTracked) * 100, 1) : null,
             'messages' => $messages,
         ]);
     }

@@ -367,6 +367,9 @@ export interface ChannelStat {
   sent: number;
   failed: number;
   delivery_rate: number;
+  delivery_tracked: number;
+  delivered: number;
+  real_delivery_rate: number | null;
 }
 
 export interface TypeStat {
@@ -393,6 +396,9 @@ export interface MessageDetail {
   subject: string | null;
   status: string;
   error: string | null;
+  delivery_status: string | null;
+  delivered_at: string | null;
+  delivery_error: string | null;
 }
 
 export interface CommunicationLogReport {
@@ -403,6 +409,9 @@ export interface CommunicationLogReport {
   total_sent: number;
   total_failed: number;
   overall_delivery_rate: number;
+  total_delivery_tracked: number;
+  total_delivered: number;
+  overall_real_delivery_rate: number | null;
   messages: MessageDetail[];
 }
 
