@@ -44,6 +44,15 @@ class SendBroadcastJob
 
     public function handle(): void
     {
+        // afterResponse() keeps running in the SAME php-fpm worker/request after the HTTP
+        // response is flushed (fastcgi_finish_request) — it does NOT reset PHP's own
+        // max_execution_time (30s on this server's php8.2-fpm pool). At the 1.2s/message
+        // WhatsApp throttle below, that cap alone would kill this mid-send at ~25
+        // recipients for any bigger broadcast, with no error logged and the broadcast
+        // stuck "in progress" forever. This job's whole reason to exist is running past
+        // a normal request's lifetime, so it must not inherit that limit.
+        set_time_limit(0);
+
         $broadcast = Broadcast::withoutGlobalScopes()->find($this->broadcastId);
         if (!$broadcast) {
             return;
