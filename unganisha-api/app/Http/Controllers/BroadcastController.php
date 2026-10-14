@@ -170,6 +170,51 @@ class BroadcastController extends Controller
         return response()->json(['data' => $data]);
     }
 
+    /**
+     * The REAL per-recipient outcome for this broadcast — not sent_count/failed_count
+     * (which only ever meant "the API call succeeded"), but actual carrier/WhatsApp
+     * delivery confirmation, pulled from communication_logs rows LogNotification
+     * tagged with this broadcast's id as they were created.
+     */
+    public function deliveryReport(Request $request, Broadcast $broadcast)
+    {
+        $logs = \App\Models\CommunicationLog::withoutGlobalScopes()
+            ->with('client:id,name')
+            ->where('metadata->broadcast_id', $broadcast->id)
+            ->orderBy('created_at')
+            ->get();
+
+        $tracked = $logs->whereNotNull('delivery_status')->count();
+
+        return response()->json([
+            'broadcast' => [
+                'id' => $broadcast->id,
+                'channel' => $broadcast->channel,
+                'subject' => $broadcast->subject,
+                'created_at' => $broadcast->created_at,
+            ],
+            'summary' => [
+                'total' => $logs->count(),
+                'api_sent' => $logs->where('status', 'sent')->count(),
+                'api_failed' => $logs->where('status', 'failed')->count(),
+                'delivery_tracked' => $tracked,
+                'delivered' => $logs->whereIn('delivery_status', ['delivered', 'read'])->count(),
+                'delivery_failed' => $logs->where('delivery_status', 'failed')->count(),
+                'delivery_pending' => $logs->where('status', 'sent')->whereNull('delivery_status')->count(),
+            ],
+            'messages' => $logs->map(fn ($l) => [
+                'id' => $l->id,
+                'recipient' => $l->recipient,
+                'client_name' => $l->client?->name,
+                'status' => $l->status,
+                'error' => $l->error,
+                'delivery_status' => $l->delivery_status,
+                'delivered_at' => $l->delivered_at?->format('Y-m-d H:i'),
+                'delivery_error' => $l->delivery_error,
+            ])->values(),
+        ]);
+    }
+
     /** Re-send the exact same content to only the recipients who failed last time — never the ones already reached. */
     public function resendFailed(Request $request, Broadcast $broadcast)
     {

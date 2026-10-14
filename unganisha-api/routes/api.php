@@ -682,6 +682,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/broadcasts/preview', [BroadcastController::class, 'preview']);
         Route::post('/broadcasts', [BroadcastController::class, 'send']);
         Route::get('/broadcasts/{broadcast}/recipients', [BroadcastController::class, 'recipients']);
+        Route::get('/broadcasts/{broadcast}/delivery-report', [BroadcastController::class, 'deliveryReport']);
         Route::post('/broadcasts/{broadcast}/resend-failed', [BroadcastController::class, 'resendFailed']);
     });
 

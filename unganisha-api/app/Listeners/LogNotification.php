@@ -153,6 +153,11 @@ class LogNotification
         if (property_exists($notification, 'bill') && $notification->bill) {
             $meta['bill_id'] = $notification->bill->id;
         }
+        // Lets a Broadcast's delivery-report view pull its own real per-recipient
+        // outcomes straight out of this table instead of re-tracking them itself.
+        if ($notification instanceof \App\Notifications\BroadcastNotification) {
+            $meta['broadcast_id'] = $notification->broadcast->id;
+        }
 
         return $meta;
     }
