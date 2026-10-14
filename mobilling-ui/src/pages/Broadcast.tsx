@@ -16,6 +16,7 @@ import {
 import { getClients } from '../api/clients';
 import { getMosmsStatus } from '../api/settings';
 import { formatDate } from '../utils/formatDate';
+import { countSmsSegments } from '../utils/smsSegments';
 
 const TEMPLATES: Record<string, { subject: string; body: string; sms_body: string; whatsapp_body: string }> = {
   maintenance: {
@@ -241,8 +242,11 @@ export default function Broadcast() {
   const smsRecipients = smsPool.filter((c) => c.phone).length;
   const clientListTruncated = (clientsData?.data?.total ?? 0) > allClients.length;
   const smsLength = form.values.sms_body?.length || 0;
-  // MoSMS bills 1 credit per 160-char SMS segment; WhatsApp is 1 credit/message.
-  const smsSegments = Math.max(1, Math.ceil(smsLength / 160));
+  // Matches MoSmS's own SmsGatewayService::countSegments() exactly — plain GSM-7
+  // text gets 160 chars in one segment then 153/segment after that, but a
+  // single emoji/non-GSM-7 character switches the WHOLE message to Unicode
+  // billing (70 then 67/segment), which a flat "/160" estimate would miss.
+  const smsSegments = countSmsSegments(form.values.sms_body || '');
   const previewSmsCreditsNeeded = preview ? preview.total * smsSegments : null;
   const previewWhatsappCreditsNeeded = preview ? preview.total : null;
 
