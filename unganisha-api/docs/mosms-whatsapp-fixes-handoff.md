@@ -89,3 +89,26 @@ still get the old text-only send: the MoSMS token API (`/whatsapp/send`, `/whats
 whether MoSMS has (or could add) an endpoint like `POST /whatsapp/send-document` accepting either a binary upload (multipart
 `file`) or a pre-uploaded media reference, plus `to`, `filename`, and an optional `caption` — mirroring the shape of the existing
 `/whatsapp/send-cta-url` call. If/when that exists, MoSMS-routed tenants can get the same PDF-attachment upgrade.
+
+## 12. Strip the fixed greeting/sign-off from the `custom_message` wrapper template
+`MosmsService::sendText()` sends free text through the Meta-approved `custom_message` template, which wraps the single
+`{{1}}` variable in fixed copy: "Hello, we have an important message for you from our team:" before it, and "Thank you for
+being our valued customer." after it. This text is not stored anywhere in MoBilling's or MoSMS's code (confirmed — it only
+exists on Meta's side as the approved template body), so it can't be changed from either codebase; it has to be edited
+directly in Meta Business Manager (WhatsApp Manager) for the WABA this template is approved under, then resubmitted for
+Meta's review.
+
+We compose the full message ourselves (greeting, body, sign-off all included) before it goes into `{{1}}` — e.g. broadcast
+templates in `mobilling-ui/src/pages/Broadcast.tsx` already open with "Dear Client," and close with "— The MoBilling Team".
+The wrapper's own fixed greeting/sign-off is therefore redundant and reads oddly doubled up ("Hello... Dear Client... Thank
+you for being our valued customer... — The MoBilling Team").
+
+Two options, in order of preference:
+- **Preferred**: create a *new* approved template (e.g. `custom_message_plain`) with just the `{{1}}` slot and no fixed
+  header/footer text, and let MoBilling opt into it per-tenant (tell us the new template's name/id so we can point
+  `customTemplateId()` at it) — this avoids changing behaviour for any other tenant currently relying on the existing
+  wrapper's framing.
+- If that's not practical, editing the existing `custom_message` template's body to drop the fixed lines also works, but
+  note this is the *shared platform default* template (per `SyncWhatsappTemplates`/`config/whatsapp.php`) — it would
+  change the framing for every other tenant on the default WABA who sends free text via `sendText()`, not just MoBilling.
+  Worth confirming that's acceptable before going this route.
