@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat, IconInfoCircle, IconPhoto } from '@tabler/icons-react';
 import {
-  getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast, previewBroadcast,
+  getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast, previewBroadcast, getMosmsContacts,
   type Broadcast as BroadcastType, type SendBroadcastPayload, type BroadcastRecipient,
   type BroadcastPreviewResponse, type BroadcastSource,
 } from '../api/broadcasts';
@@ -72,6 +72,18 @@ export default function Broadcast() {
     label: `${c.name}${c.email ? ` (${c.email})` : ''}`,
   }));
 
+  // Fetch MoBilling's own MoSMS address book for the "MoSMS Contacts" source picker.
+  const { data: mosmsContactsData } = useQuery({
+    queryKey: ['broadcast-mosms-contacts'],
+    queryFn: () => getMosmsContacts(),
+  });
+  const mosmsContactOptions = (mosmsContactsData?.data?.data || [])
+    .filter((c) => c.phone)
+    .map((c) => ({
+      value: c.phone as string,
+      label: `${c.name || c.phone}${c.email ? ` (${c.email})` : ''}`,
+    }));
+
   // Fetch broadcast history — polls while anything on this page is still
   // sending in the background (broadcasts now dispatch after the response
   // returns, so counts fill in live rather than arriving all at once).
@@ -97,7 +109,7 @@ export default function Broadcast() {
 
   const [preview, setPreview] = useState<BroadcastPreviewResponse | null>(null);
   const previewMutation = useMutation({
-    mutationFn: (data: { channel: string; source?: BroadcastSource; client_ids?: string[] }) => previewBroadcast(data),
+    mutationFn: (data: { channel: string; sources?: BroadcastSource[]; client_ids?: string[]; contact_phones?: string[] }) => previewBroadcast(data),
     onSuccess: (res) => setPreview(res.data),
     onError: (err: any) => {
       notifications.show({
@@ -127,13 +139,14 @@ export default function Broadcast() {
   const form = useForm<SendBroadcastPayload>({
     initialValues: {
       channel: 'email',
-      source: 'mobilling',
+      sources: ['mobilling'],
       subject: '',
       body: '',
       sms_body: '',
       whatsapp_body: '',
       whatsapp_image: null,
       client_ids: [],
+      contact_phones: [],
     },
     validate: {
       subject: (v, values) =>
@@ -152,7 +165,8 @@ export default function Broadcast() {
 
   const mutation = useMutation({
     mutationFn: (data: SendBroadcastPayload) => {
-      const payload: SendBroadcastPayload = { channel: data.channel, source: data.source };
+      const sources = data.sources?.length ? data.sources : ['mobilling' as const];
+      const payload: SendBroadcastPayload = { channel: data.channel, sources };
       if (['email', 'both'].includes(data.channel)) {
         payload.subject = data.subject;
         payload.body = data.body;
@@ -164,8 +178,11 @@ export default function Broadcast() {
         payload.whatsapp_body = data.whatsapp_body;
         payload.whatsapp_image = data.whatsapp_image;
       }
-      if (data.source === 'mobilling' && data.client_ids && data.client_ids.length > 0) {
+      if (sources.includes('mobilling') && data.client_ids && data.client_ids.length > 0) {
         payload.client_ids = data.client_ids;
+      }
+      if (sources.includes('mosms_contacts') && data.contact_phones && data.contact_phones.length > 0) {
+        payload.contact_phones = data.contact_phones;
       }
       return sendBroadcast(payload);
     },
@@ -189,11 +206,12 @@ export default function Broadcast() {
   });
 
   const channel = form.values.channel;
-  const source = form.values.source ?? 'mobilling';
+  const sources = form.values.sources?.length ? form.values.sources : ['mobilling' as const];
   const showEmail = ['email', 'both'].includes(channel);
   const showSms = ['sms', 'both'].includes(channel);
   const showWhatsapp = channel === 'whatsapp';
-  const isMobillingSource = source === 'mobilling';
+  const isMobillingSource = sources.includes('mobilling');
+  const isMosmsContactsSource = sources.includes('mosms_contacts');
 
   // What an SMS send will actually produce: one text per selected client
   // (or every client if none selected) who has a phone number on file.
@@ -222,20 +240,26 @@ export default function Broadcast() {
               {...form.getInputProps('channel')}
             />
 
-            <Select
+            <MultiSelect
               label="Send to"
+              description="Pick one or more sources — a contact appearing in more than one is only messaged once."
               data={[
                 { value: 'mobilling', label: 'MoBilling clients' },
                 { value: 'mosms_contacts', label: 'MoSMS Contacts (our own MoSMS address book)' },
               ]}
-              allowDeselect={false}
-              {...form.getInputProps('source')}
+              value={sources}
+              onChange={(v) => form.setFieldValue('sources', (v.length ? v : ['mobilling']) as BroadcastSource[])}
             />
-            {!isMobillingSource && (
-              <Alert variant="light" color="blue" icon={<IconInfoCircle size={18} />}>
-                This will send to everyone in this source matching the channel above — there's no
-                per-recipient picker for this source yet. Use Preview to see exactly who.
-              </Alert>
+
+            {isMosmsContactsSource && (
+              <MultiSelect
+                label="MoSMS Contacts to include"
+                placeholder={`All ${mosmsContactOptions.length} contacts (leave empty to send to everyone)`}
+                data={mosmsContactOptions}
+                searchable
+                clearable
+                {...form.getInputProps('contact_phones')}
+              />
             )}
 
             <Select
@@ -350,8 +374,9 @@ export default function Broadcast() {
                 loading={previewMutation.isPending}
                 onClick={() => previewMutation.mutate({
                   channel: form.values.channel,
-                  source: form.values.source,
+                  sources,
                   client_ids: isMobillingSource && form.values.client_ids?.length ? form.values.client_ids : undefined,
+                  contact_phones: isMosmsContactsSource && form.values.contact_phones?.length ? form.values.contact_phones : undefined,
                 })}
               >
                 Preview recipients

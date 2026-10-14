@@ -20,6 +20,21 @@ class BroadcastController extends Controller
         return response()->json($broadcasts);
     }
 
+    /** Lists this tenant's own MoSMS address book, for the "MoSMS Contacts" source picker. */
+    public function mosmsContacts(Request $request)
+    {
+        $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($request->user()->tenant_id);
+        $contacts = app(MosmsService::class)->contacts($tenant);
+
+        return response()->json([
+            'data' => collect($contacts)->map(fn (array $c) => [
+                'phone' => $c['phone'],
+                'name' => $c['name'],
+                'email' => $c['email'],
+            ])->values(),
+        ]);
+    }
+
     /**
      * Resolve who a broadcast on this channel would actually reach — same
      * query `send()` uses, minus creating/dispatching anything. Lets staff
@@ -30,12 +45,15 @@ class BroadcastController extends Controller
     {
         $request->validate([
             'channel' => 'required|in:email,sms,whatsapp,both',
-            'source' => 'nullable|in:mobilling,mosms_contacts',
+            'sources' => 'nullable|array',
+            'sources.*' => 'in:mobilling,mosms_contacts',
             'client_ids' => 'nullable|array',
             'client_ids.*' => 'uuid|exists:clients,id',
+            'contact_phones' => 'nullable|array',
+            'contact_phones.*' => 'string',
         ]);
 
-        [$recipients, $duplicatesRemoved] = $this->resolveRecipients($request, $request->input('source', 'mobilling'), $request->channel);
+        [$recipients, $duplicatesRemoved] = $this->resolveRecipients($request, $this->requestedSources($request), $request->channel);
 
         return response()->json([
             'total' => $recipients->count(),
@@ -59,15 +77,18 @@ class BroadcastController extends Controller
             // Capped at 2MB — this server's upload_max_filesize is 2M, so anything larger
             // never reaches this validation (PHP drops it before Laravel sees the request).
             'whatsapp_image' => 'nullable|image|mimes:jpeg,png,webp|max:2048',
-            'source' => 'nullable|in:mobilling,mosms_contacts',
+            'sources' => 'nullable|array',
+            'sources.*' => 'in:mobilling,mosms_contacts',
             'client_ids' => 'nullable|array',
             'client_ids.*' => 'uuid|exists:clients,id',
+            'contact_phones' => 'nullable|array',
+            'contact_phones.*' => 'string',
         ]);
 
         $channel = $request->channel;
-        $source = $request->input('source', 'mobilling');
+        $sources = $this->requestedSources($request);
 
-        [$recipients, $duplicatesRemoved] = $this->resolveRecipients($request, $source, $channel);
+        [$recipients, $duplicatesRemoved] = $this->resolveRecipients($request, $sources, $channel);
 
         $imagePath = null;
         if ($request->hasFile('whatsapp_image')) {
@@ -77,7 +98,7 @@ class BroadcastController extends Controller
         // Create broadcast record
         $broadcast = Broadcast::create([
             'sent_by'          => $request->user()->id,
-            'client_ids'       => $source === 'mobilling' ? $request->client_ids : null,
+            'client_ids'       => in_array('mobilling', $sources, true) ? $request->client_ids : null,
             'total_recipients' => $recipients->count(),
             'channel'          => $channel,
             'subject'          => $request->subject,
@@ -196,19 +217,34 @@ class BroadcastController extends Controller
         ], 202);
     }
 
+    /** @return string[] */
+    private function requestedSources(Request $request): array
+    {
+        if ($request->filled('sources')) {
+            return array_values(array_unique((array) $request->input('sources')));
+        }
+        // Back-compat with the old single `source` field.
+        return [$request->input('source', 'mobilling')];
+    }
+
     /**
-     * Eligible recipients for a channel/source, with duplicate contacts collapsed
-     * — two records sharing the same phone (or email, for an email send) would
+     * Eligible recipients across every selected source/channel combo, with
+     * duplicate contacts collapsed — two records sharing the same phone (or
+     * email, for an email send), even across DIFFERENT sources, would
      * otherwise each get notified separately, so the same person gets the
      * message twice.
      *
+     * @param string[] $sources
      * @return array{0: Collection<int, array{key: string, client_id: ?string, name: ?string, phone: ?string, email: ?string}>, 1: int} [deduped recipients, how many duplicates were dropped]
      */
-    private function resolveRecipients(Request $request, string $source, string $channel): array
+    private function resolveRecipients(Request $request, array $sources, string $channel): array
     {
-        $raw = $source === 'mosms_contacts'
-            ? $this->mosmsContactRecipients($request, $channel)
-            : $this->mobillingClientRecipients($request, $channel);
+        $raw = [];
+        foreach (array_unique($sources) as $source) {
+            $raw = array_merge($raw, $source === 'mosms_contacts'
+                ? $this->mosmsContactRecipients($request, $channel)
+                : $this->mobillingClientRecipients($request, $channel));
+        }
 
         $deduped = collect($raw)->unique(fn (array $r) => $this->recipientDedupKey($r, $channel))->values();
 
@@ -254,8 +290,21 @@ class BroadcastController extends Controller
         $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($request->user()->tenant_id);
         $contacts = app(MosmsService::class)->contacts($tenant);
 
+        // Staff picked specific contacts rather than "everyone" — match by
+        // normalized phone, same comparison the dedup key itself uses.
+        $selectedPhones = $request->filled('contact_phones')
+            ? collect((array) $request->input('contact_phones'))->map(fn ($p) => $this->normalizePhone($p))->all()
+            : null;
+
         return collect($contacts)
-            ->filter(function (array $c) use ($channel) {
+            ->filter(function (array $c) use ($channel, $selectedPhones) {
+                if ($selectedPhones !== null) {
+                    $normalized = $c['phone'] ? $this->normalizePhone($c['phone']) : null;
+                    if (!$normalized || !in_array($normalized, $selectedPhones, true)) {
+                        return false;
+                    }
+                }
+
                 $hasEmail = !empty($c['email']);
                 $hasPhone = !empty($c['phone']);
 

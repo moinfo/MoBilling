@@ -678,6 +678,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     // Broadcasts (mass email/SMS to all clients — gated: was open to any user)
     Route::middleware('permission:menu.broadcast')->group(function () {
         Route::get('/broadcasts', [BroadcastController::class, 'index']);
+        Route::get('/broadcasts/mosms-contacts', [BroadcastController::class, 'mosmsContacts']);
         Route::post('/broadcasts/preview', [BroadcastController::class, 'preview']);
         Route::post('/broadcasts', [BroadcastController::class, 'send']);
         Route::get('/broadcasts/{broadcast}/recipients', [BroadcastController::class, 'recipients']);
