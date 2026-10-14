@@ -154,8 +154,8 @@ class MosmsService
         ], $this->tokenFor($tenant));
     }
 
-    /** Named approved template with ordered variables (+ optional dynamic URL-button suffix). */
-    public function sendTemplate(Tenant $tenant, string $to, string $template, array $variables = [], string $language = 'sw', ?string $buttonUrlParam = null): array
+    /** Named approved template with ordered variables (+ optional dynamic URL-button suffix and/or image header). */
+    public function sendTemplate(Tenant $tenant, string $to, string $template, array $variables = [], string $language = 'sw', ?string $buttonUrlParam = null, ?string $headerImageUrl = null): array
     {
         return $this->request('post', '/whatsapp/send', array_filter([
             'to'        => $to,
@@ -163,6 +163,7 @@ class MosmsService
             'variables' => array_values(array_map('strval', $variables)),
             'language'  => $language,
             'button_url_param' => $buttonUrlParam,
+            'header_image_url' => $headerImageUrl,
         ], fn ($v) => $v !== null), $this->tokenFor($tenant));
     }
 

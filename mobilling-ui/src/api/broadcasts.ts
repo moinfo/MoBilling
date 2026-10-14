@@ -7,6 +7,7 @@ export interface Broadcast {
   body: string | null;
   sms_body: string | null;
   whatsapp_body: string | null;
+  whatsapp_image_url: string | null;
   total_recipients: number;
   sent_count: number;
   failed_count: number;
@@ -24,6 +25,7 @@ export interface SendBroadcastPayload {
   body?: string;
   sms_body?: string;
   whatsapp_body?: string;
+  whatsapp_image?: File | null;
   client_ids?: string[];
 }
 
@@ -38,8 +40,22 @@ export interface BroadcastRecipient {
 export const getBroadcasts = (params?: { page?: number; per_page?: number }) =>
   api.get('/broadcasts', { params });
 
-export const sendBroadcast = (data: SendBroadcastPayload) =>
-  api.post('/broadcasts', data);
+export const sendBroadcast = (data: SendBroadcastPayload) => {
+  if (!data.whatsapp_image) {
+    return api.post('/broadcasts', data);
+  }
+
+  const form = new FormData();
+  form.append('channel', data.channel);
+  if (data.subject) form.append('subject', data.subject);
+  if (data.body) form.append('body', data.body);
+  if (data.sms_body) form.append('sms_body', data.sms_body);
+  if (data.whatsapp_body) form.append('whatsapp_body', data.whatsapp_body);
+  form.append('whatsapp_image', data.whatsapp_image);
+  (data.client_ids ?? []).forEach((id) => form.append('client_ids[]', id));
+
+  return api.post('/broadcasts', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
 
 export const getBroadcastRecipients = (id: string, status: 'sent' | 'failed') =>
   api.get<{ data: BroadcastRecipient[] }>(`/broadcasts/${id}/recipients`, { params: { status } });

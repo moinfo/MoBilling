@@ -2,12 +2,12 @@ import { useState } from 'react';
 import {
   Title, Group, Paper, Stack, SegmentedControl, TextInput, Textarea,
   MultiSelect, Button, Table, Badge, Text, Pagination, Loader, Select, Alert,
-  ActionIcon, Tooltip, Drawer,
+  ActionIcon, Tooltip, Drawer, FileInput, Image,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat, IconInfoCircle } from '@tabler/icons-react';
+import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat, IconInfoCircle, IconPhoto } from '@tabler/icons-react';
 import {
   getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast,
   type Broadcast as BroadcastType, type SendBroadcastPayload, type BroadcastRecipient,
@@ -117,6 +117,7 @@ export default function Broadcast() {
       body: '',
       sms_body: '',
       whatsapp_body: '',
+      whatsapp_image: null,
       client_ids: [],
     },
     validate: {
@@ -146,6 +147,7 @@ export default function Broadcast() {
       }
       if (data.channel === 'whatsapp') {
         payload.whatsapp_body = data.whatsapp_body;
+        payload.whatsapp_image = data.whatsapp_image;
       }
       if (data.client_ids && data.client_ids.length > 0) {
         payload.client_ids = data.client_ids;
@@ -245,13 +247,34 @@ export default function Broadcast() {
             )}
 
             {showWhatsapp && (
-              <Textarea
-                label="WhatsApp Message"
-                placeholder="Type your WhatsApp message..."
-                minRows={4}
-                autosize
-                {...form.getInputProps('whatsapp_body')}
-              />
+              <>
+                <Textarea
+                  label="WhatsApp Message"
+                  placeholder="Type your WhatsApp message..."
+                  minRows={4}
+                  autosize
+                  {...form.getInputProps('whatsapp_body')}
+                />
+                <FileInput
+                  label="Poster (optional)"
+                  description="Attach an image to send alongside the message, e.g. a holiday poster (JPG/PNG/WEBP, max 2MB)"
+                  placeholder="Choose an image..."
+                  accept="image/jpeg,image/png,image/webp"
+                  leftSection={<IconPhoto size={16} />}
+                  clearable
+                  {...form.getInputProps('whatsapp_image')}
+                />
+                {form.values.whatsapp_image && (
+                  <Image
+                    src={URL.createObjectURL(form.values.whatsapp_image)}
+                    alt="Poster preview"
+                    radius="sm"
+                    mah={200}
+                    w="auto"
+                    fit="contain"
+                  />
+                )}
+              </>
             )}
 
             <MultiSelect

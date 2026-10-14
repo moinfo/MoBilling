@@ -125,15 +125,22 @@ class WhatsAppService
         string $templateName,
         array $parameters = [],
         string $language = 'en',
-        ?string $buttonUrlParam = null
+        ?string $buttonUrlParam = null,
+        ?string $headerImageUrl = null
     ): array {
         if ($this->useMosms($tenant)) {
-            return app(MosmsService::class)->sendTemplate($tenant, $recipient, $templateName, $parameters, $language, $buttonUrlParam);
+            return app(MosmsService::class)->sendTemplate($tenant, $recipient, $templateName, $parameters, $language, $buttonUrlParam, $headerImageUrl);
         }
 
         $this->validateCredentials($tenant);
 
         $components = [];
+        if ($headerImageUrl !== null) {
+            $components[] = [
+                'type' => 'header',
+                'parameters' => [['type' => 'image', 'image' => ['link' => $headerImageUrl]]],
+            ];
+        }
         if (!empty($parameters)) {
             $components[] = [
                 'type' => 'body',

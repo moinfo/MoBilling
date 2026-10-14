@@ -64,8 +64,19 @@ class BroadcastNotification extends Notification implements ShouldQueue
         return $this->broadcast->sms_body;
     }
 
-    public function toWhatsApp($notifiable): string
+    public function toWhatsApp($notifiable): string|array
     {
+        if ($this->broadcast->whatsapp_image_url) {
+            return [
+                'template' => 'custom_message_image',
+                'parameters' => [$this->broadcast->whatsapp_body],
+                'language' => 'en',
+                'header_image_url' => $this->broadcast->whatsapp_image_url,
+                // If the image template isn't approved/available, still send the words.
+                'fallback' => $this->broadcast->whatsapp_body,
+            ];
+        }
+
         return $this->broadcast->whatsapp_body;
     }
 }

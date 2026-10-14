@@ -26,6 +26,9 @@ class BroadcastController extends Controller
             'body'       => 'required_if:channel,email,both|nullable|string',
             'sms_body'   => 'required_if:channel,sms,both|nullable|string|max:160',
             'whatsapp_body' => 'required_if:channel,whatsapp|nullable|string|max:4096',
+            // Capped at 2MB — this server's upload_max_filesize is 2M, so anything larger
+            // never reaches this validation (PHP drops it before Laravel sees the request).
+            'whatsapp_image' => 'nullable|image|mimes:jpeg,png,webp|max:2048',
             'client_ids' => 'nullable|array',
             'client_ids.*' => 'uuid|exists:clients,id',
         ]);
@@ -57,6 +60,11 @@ class BroadcastController extends Controller
 
         $clients = $query->get();
 
+        $imagePath = null;
+        if ($request->hasFile('whatsapp_image')) {
+            $imagePath = $request->file('whatsapp_image')->store('whatsapp-posters', 'public');
+        }
+
         // Create broadcast record
         $broadcast = Broadcast::create([
             'sent_by'          => $request->user()->id,
@@ -67,6 +75,7 @@ class BroadcastController extends Controller
             'body'             => $request->body,
             'sms_body'         => $request->sms_body,
             'whatsapp_body'    => $request->whatsapp_body,
+            'whatsapp_image_path' => $imagePath,
             'sent_count'       => 0,
             'failed_count'     => 0,
         ]);
@@ -129,6 +138,7 @@ class BroadcastController extends Controller
             'body'             => $broadcast->body,
             'sms_body'         => $broadcast->sms_body,
             'whatsapp_body'    => $broadcast->whatsapp_body,
+            'whatsapp_image_path' => $broadcast->whatsapp_image_path,
             'sent_count'       => 0,
             'failed_count'     => 0,
             'retry_of_broadcast_id' => $broadcast->id,
