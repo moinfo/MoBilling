@@ -57,15 +57,24 @@ class LogNotification
         // Extract subject and message
         $subject = null;
         $message = null;
+        $mosmsMessageId = null;
+        $clientRef = null;
 
         if ($channel === 'email') {
             // $event->response is SentMessage — extract subject from the actual email
             $subject = $this->extractEmailSubject($event->response);
         } elseif ($channel === 'sms') {
-            // SmsChannel::send() returns void, so call toSms() to get the message
             $message = $this->extractSmsMessage($notification, $notifiable);
+            // SmsChannel::send() now returns MoSMS's own response, which carries its
+            // internal message id synchronously — used later to match MoSMS's
+            // delivery-status webhook push back to this row.
+            $mosmsMessageId = is_array($event->response) ? ($event->response['id'] ?? null) : null;
         } elseif ($channel === 'whatsapp') {
             $message = $this->extractWhatsAppMessage($notification, $notifiable);
+            // WhatsApp sends are queued on MoSMS's side, so there's no id yet —
+            // WhatsAppChannel::send() mints a client_ref instead, which MoSMS's
+            // delivery-status webhook push echoes back.
+            $clientRef = is_array($event->response) ? ($event->response['client_ref'] ?? null) : null;
         }
 
         // Build metadata from public properties on the notification
@@ -81,6 +90,8 @@ class LogNotification
             'message' => $message,
             'status' => 'sent',
             'metadata' => $metadata ?: null,
+            'mosms_message_id' => $mosmsMessageId,
+            'client_ref' => $clientRef,
         ]);
     }
 

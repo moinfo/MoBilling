@@ -9,28 +9,30 @@ class SmsChannel
 {
     public function __construct(private SmsService $smsService) {}
 
-    public function send(object $notifiable, Notification $notification): void
+    public function send(object $notifiable, Notification $notification): ?array
     {
         if (!method_exists($notification, 'toSms')) {
-            return;
+            return null;
         }
 
         $message = $notification->toSms($notifiable);
         if (!$message) {
-            return;
+            return null;
         }
 
         $recipient = $notifiable->phone;
         if (!$recipient) {
-            return;
+            return null;
         }
 
         $tenant = $notifiable->tenant;
         if (!$tenant) {
-            return;
+            return null;
         }
 
-        // Let exceptions propagate so Laravel fires NotificationFailed (not NotificationSent)
-        $this->smsService->send($tenant, $recipient, $message);
+        // Let exceptions propagate so Laravel fires NotificationFailed (not NotificationSent).
+        // The return value becomes NotificationSent::$response — LogNotification reads
+        // MoSMS's own message id out of it for later delivery-status matching.
+        return $this->smsService->send($tenant, $recipient, $message);
     }
 }

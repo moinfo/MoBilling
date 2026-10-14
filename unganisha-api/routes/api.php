@@ -131,6 +131,8 @@ Route::match(['get', 'post'], '/attendance/device/{token}', [\App\Http\Controlle
 Route::post('/webhooks/mosms/renewal-reply', [\App\Http\Controllers\WhatsappRenewalWebhookController::class, 'confirm']);
 // MoSMS: any other WhatsApp message from a phone attributed to this tenant (public, shared-secret)
 Route::post('/webhooks/mosms/menu', [\App\Http\Controllers\WhatsappRenewalWebhookController::class, 'menu']);
+// MoSMS: a message we sent got a real delivery-status update (public, shared-secret)
+Route::post('/webhooks/mosms/delivery-status', [\App\Http\Controllers\MosmsDeliveryStatusWebhookController::class, 'update']);
 
 // Public invoice payment (no auth required)
 Route::get('/pay/{document}', [InvoicePaymentController::class, 'show']);

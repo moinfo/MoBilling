@@ -27,12 +27,12 @@ class WhatsAppService
      * Send a plain text message via WhatsApp Business API.
      * Best for session-based (within 24h) replies.
      */
-    public function sendText(Tenant $tenant, string $recipient, string $message): array
+    public function sendText(Tenant $tenant, string $recipient, string $message, ?string $clientRef = null): array
     {
         // Dual-mode: tenants without their own Meta credentials send through
         // their linked MoSMS account instead (MoSMS fans out to Meta).
         if ($this->useMosms($tenant)) {
-            return app(MosmsService::class)->sendText($tenant, $recipient, $message);
+            return app(MosmsService::class)->sendText($tenant, $recipient, $message, $clientRef);
         }
 
         $this->validateCredentials($tenant);
@@ -126,10 +126,11 @@ class WhatsAppService
         array $parameters = [],
         string $language = 'en',
         ?string $buttonUrlParam = null,
-        ?string $headerImageUrl = null
+        ?string $headerImageUrl = null,
+        ?string $clientRef = null
     ): array {
         if ($this->useMosms($tenant)) {
-            return app(MosmsService::class)->sendTemplate($tenant, $recipient, $templateName, $parameters, $language, $buttonUrlParam, $headerImageUrl);
+            return app(MosmsService::class)->sendTemplate($tenant, $recipient, $templateName, $parameters, $language, $buttonUrlParam, $headerImageUrl, $clientRef);
         }
 
         $this->validateCredentials($tenant);

@@ -146,13 +146,14 @@ class MosmsService
     }
 
     /** Free text — wrapped by MoSMS in their approved custom_message template. */
-    public function sendText(Tenant $tenant, string $to, string $text): array
+    public function sendText(Tenant $tenant, string $to, string $text, ?string $clientRef = null): array
     {
-        return $this->request('post', '/whatsapp/send', [
+        return $this->request('post', '/whatsapp/send', array_filter([
             'to'   => $to,
             'whatsapp_template_id' => $this->customTemplateId($tenant),
             'text' => $text,
-        ], $this->tokenFor($tenant));
+            'client_ref' => $clientRef,
+        ], fn ($v) => $v !== null), $this->tokenFor($tenant));
     }
 
     /**
@@ -184,7 +185,7 @@ class MosmsService
     }
 
     /** Named approved template with ordered variables (+ optional dynamic URL-button suffix and/or image header). */
-    public function sendTemplate(Tenant $tenant, string $to, string $template, array $variables = [], string $language = 'sw', ?string $buttonUrlParam = null, ?string $headerImageUrl = null): array
+    public function sendTemplate(Tenant $tenant, string $to, string $template, array $variables = [], string $language = 'sw', ?string $buttonUrlParam = null, ?string $headerImageUrl = null, ?string $clientRef = null): array
     {
         return $this->request('post', '/whatsapp/send', array_filter([
             'to'        => $to,
@@ -193,6 +194,7 @@ class MosmsService
             'language'  => $language,
             'button_url_param' => $buttonUrlParam,
             'header_image_url' => $headerImageUrl,
+            'client_ref' => $clientRef,
         ], fn ($v) => $v !== null), $this->tokenFor($tenant));
     }
 
