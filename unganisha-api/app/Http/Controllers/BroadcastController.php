@@ -18,6 +18,34 @@ class BroadcastController extends Controller
         return response()->json($broadcasts);
     }
 
+    /**
+     * Resolve who a broadcast on this channel would actually reach — same
+     * query `send()` uses, minus creating/dispatching anything. Lets staff
+     * check the recipient list (and see how many duplicate contacts get
+     * skipped) before committing to a real send.
+     */
+    public function preview(Request $request)
+    {
+        $request->validate([
+            'channel' => 'required|in:email,sms,whatsapp,both',
+            'client_ids' => 'nullable|array',
+            'client_ids.*' => 'uuid|exists:clients,id',
+        ]);
+
+        [$clients, $duplicatesRemoved] = $this->resolveRecipients($request, $request->channel);
+
+        return response()->json([
+            'total' => $clients->count(),
+            'duplicates_removed' => $duplicatesRemoved,
+            'recipients' => $clients->map(fn (Client $c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'email' => $c->email,
+                'phone' => $c->phone,
+            ])->values(),
+        ]);
+    }
+
     public function send(Request $request)
     {
         $request->validate([
@@ -35,30 +63,7 @@ class BroadcastController extends Controller
 
         $channel = $request->channel;
 
-        // Build eligible client query (BelongsToTenant auto-scopes)
-        $query = Client::query();
-
-        if ($request->filled('client_ids')) {
-            $query->whereIn('id', $request->client_ids);
-        }
-
-        // Filter to clients who can receive on the chosen channel
-        if ($channel === 'email') {
-            $query->whereNotNull('email')->where('email', '!=', '');
-        } elseif (in_array($channel, ['sms', 'whatsapp'], true)) {
-            $query->whereNotNull('phone')->where('phone', '!=', '');
-        } else {
-            // 'both' — need at least one contact method
-            $query->where(function ($q) {
-                $q->where(function ($q2) {
-                    $q2->whereNotNull('email')->where('email', '!=', '');
-                })->orWhere(function ($q2) {
-                    $q2->whereNotNull('phone')->where('phone', '!=', '');
-                });
-            });
-        }
-
-        $clients = $query->get();
+        [$clients, $duplicatesRemoved] = $this->resolveRecipients($request, $channel);
 
         $imagePath = null;
         if ($request->hasFile('whatsapp_image')) {
@@ -87,10 +92,13 @@ class BroadcastController extends Controller
             ->onConnection('database')
             ->onQueue('broadcasts');
 
+        $dupeNote = $duplicatesRemoved > 0 ? " ({$duplicatesRemoved} duplicate contact(s) skipped)" : '';
+
         return response()->json([
-            'message'          => 'Broadcast started — sending in the background. Refresh History for live progress.',
+            'message'          => "Broadcast started for {$clients->count()} recipient(s){$dupeNote} — sending in the background. Refresh History for live progress.",
             'broadcast_id'     => $broadcast->id,
             'total_recipients' => $clients->count(),
+            'duplicates_removed' => $duplicatesRemoved,
         ], 202);
     }
 
@@ -155,5 +163,73 @@ class BroadcastController extends Controller
             'broadcast_id'     => $retry->id,
             'total_recipients' => count($failedIds),
         ], 202);
+    }
+
+    /**
+     * Eligible clients for a channel, with duplicate contacts collapsed — two
+     * client records sharing the same phone (or email, for an email send)
+     * would otherwise each get notified separately, so the same person gets
+     * the message twice.
+     *
+     * @return array{0: \Illuminate\Support\Collection<int, Client>, 1: int} [deduped clients, how many duplicates were dropped]
+     */
+    private function resolveRecipients(Request $request, string $channel): array
+    {
+        $raw = $this->recipientQuery($request, $channel)->get();
+        $deduped = $raw->unique(fn (Client $c) => $this->recipientDedupKey($c, $channel))->values();
+
+        return [$deduped, $raw->count() - $deduped->count()];
+    }
+
+    private function recipientQuery(Request $request, string $channel)
+    {
+        // BelongsToTenant auto-scopes this to the current tenant.
+        $query = Client::query();
+
+        if ($request->filled('client_ids')) {
+            $query->whereIn('id', $request->client_ids);
+        }
+
+        if ($channel === 'email') {
+            $query->whereNotNull('email')->where('email', '!=', '');
+        } elseif (in_array($channel, ['sms', 'whatsapp'], true)) {
+            $query->whereNotNull('phone')->where('phone', '!=', '');
+        } else {
+            // 'both' — need at least one contact method
+            $query->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereNotNull('email')->where('email', '!=', '');
+                })->orWhere(function ($q2) {
+                    $q2->whereNotNull('phone')->where('phone', '!=', '');
+                });
+            });
+        }
+
+        return $query;
+    }
+
+    /** Two clients are "the same recipient" for this channel if they'd get the exact same message(s). */
+    private function recipientDedupKey(Client $client, string $channel): string
+    {
+        $phone = $client->phone ? $this->normalizePhone($client->phone) : null;
+        $email = $client->email ? strtolower(trim($client->email)) : null;
+
+        return match ($channel) {
+            'email' => 'email:' . $email,
+            'sms', 'whatsapp' => 'phone:' . $phone,
+            default => 'phone:' . $phone . '|email:' . $email, // 'both'
+        };
+    }
+
+    /** Mirrors WhatsAppService::formatPhone() — same normalization, so "0712..." and "255712..." collapse to one key. */
+    private function normalizePhone(string $phone): string
+    {
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+
+        if (str_starts_with($phone, '0') && strlen($phone) <= 10) {
+            $phone = '255' . substr($phone, 1);
+        }
+
+        return $phone;
     }
 }

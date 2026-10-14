@@ -9,8 +9,9 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat, IconInfoCircle, IconPhoto } from '@tabler/icons-react';
 import {
-  getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast,
+  getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast, previewBroadcast,
   type Broadcast as BroadcastType, type SendBroadcastPayload, type BroadcastRecipient,
+  type BroadcastPreviewResponse,
 } from '../api/broadcasts';
 import { getClients } from '../api/clients';
 import { formatDate } from '../utils/formatDate';
@@ -93,6 +94,19 @@ export default function Broadcast() {
     enabled: !!recipientsFor,
   });
   const viewedRecipients: BroadcastRecipient[] = recipientsData?.data?.data || [];
+
+  const [preview, setPreview] = useState<BroadcastPreviewResponse | null>(null);
+  const previewMutation = useMutation({
+    mutationFn: (data: { channel: string; client_ids?: string[] }) => previewBroadcast(data),
+    onSuccess: (res) => setPreview(res.data),
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Could not load recipients',
+        message: err.response?.data?.message || 'Something went wrong',
+        color: 'red',
+      });
+    },
+  });
 
   const resendMutation = useMutation({
     mutationFn: (id: string) => resendFailedBroadcast(id),
@@ -310,6 +324,17 @@ export default function Broadcast() {
 
             <Group>
               <Button
+                variant="default"
+                leftSection={<IconEye size={16} />}
+                loading={previewMutation.isPending}
+                onClick={() => previewMutation.mutate({
+                  channel: form.values.channel,
+                  client_ids: form.values.client_ids?.length ? form.values.client_ids : undefined,
+                })}
+              >
+                Preview recipients
+              </Button>
+              <Button
                 type="submit"
                 leftSection={<IconSend size={16} />}
                 loading={mutation.isPending}
@@ -455,6 +480,37 @@ export default function Broadcast() {
                 )}
               </Paper>
             ))}
+          </Stack>
+        )}
+      </Drawer>
+
+      <Drawer
+        opened={!!preview}
+        onClose={() => setPreview(null)}
+        title={<Text fw={700}>Who this will reach</Text>}
+        position="right"
+        size="md"
+      >
+        {preview && (
+          <Stack gap="xs">
+            <Text size="sm" c="dimmed">
+              {preview.total} recipient(s) will be messaged.
+              {preview.duplicates_removed > 0 && (
+                <> {preview.duplicates_removed} duplicate contact(s) (same phone/email on more than one client) were skipped, so no one gets it twice.</>
+              )}
+            </Text>
+            {preview.total === 0 ? (
+              <Alert color="yellow" icon={<IconInfoCircle size={18} />}>
+                No clients match this channel/recipient selection.
+              </Alert>
+            ) : (
+              preview.recipients.map((r) => (
+                <Paper key={r.id} withBorder p="xs" radius="sm">
+                  <Text size="sm" fw={500}>{r.name}</Text>
+                  <Text size="xs" c="dimmed">{[r.phone, r.email].filter(Boolean).join(' · ') || '—'}</Text>
+                </Paper>
+              ))
+            )}
           </Stack>
         )}
       </Drawer>

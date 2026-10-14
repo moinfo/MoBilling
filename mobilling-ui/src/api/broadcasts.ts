@@ -37,6 +37,19 @@ export interface BroadcastRecipient {
   reason: string | null;
 }
 
+export interface BroadcastPreviewRecipient {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface BroadcastPreviewResponse {
+  total: number;
+  duplicates_removed: number;
+  recipients: BroadcastPreviewRecipient[];
+}
+
 export const getBroadcasts = (params?: { page?: number; per_page?: number }) =>
   api.get('/broadcasts', { params });
 
@@ -59,6 +72,9 @@ export const sendBroadcast = (data: SendBroadcastPayload) => {
 
 export const getBroadcastRecipients = (id: string, status: 'sent' | 'failed') =>
   api.get<{ data: BroadcastRecipient[] }>(`/broadcasts/${id}/recipients`, { params: { status } });
+
+export const previewBroadcast = (data: { channel: string; client_ids?: string[] }) =>
+  api.post<BroadcastPreviewResponse>('/broadcasts/preview', data);
 
 export const resendFailedBroadcast = (id: string) =>
   api.post<{ message: string; broadcast_id: string; total_recipients: number }>(`/broadcasts/${id}/resend-failed`);
