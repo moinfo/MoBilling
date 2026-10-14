@@ -14,6 +14,7 @@ import {
   type BroadcastPreviewResponse, type BroadcastSource,
 } from '../api/broadcasts';
 import { getClients } from '../api/clients';
+import { getMosmsStatus } from '../api/settings';
 import { formatDate } from '../utils/formatDate';
 
 const TEMPLATES: Record<string, { subject: string; body: string; sms_body: string; whatsapp_body: string }> = {
@@ -77,6 +78,14 @@ export default function Broadcast() {
     queryKey: ['broadcast-mosms-contacts'],
     queryFn: () => getMosmsContacts(),
   });
+  // MoSMS wallet balance — SMS and WhatsApp are billed from separate pools.
+  const { data: mosmsStatusData } = useQuery({
+    queryKey: ['broadcast-mosms-balance'],
+    queryFn: () => getMosmsStatus(),
+  });
+  const smsBalance = mosmsStatusData?.data?.data?.balance?.sms_balance ?? null;
+  const whatsappBalance = mosmsStatusData?.data?.data?.balance?.whatsapp_balance ?? null;
+
   const mosmsContactOptions = Array.from(
     (mosmsContactsData?.data?.data || [])
       .filter((c) => c.phone)
@@ -232,6 +241,10 @@ export default function Broadcast() {
   const smsRecipients = smsPool.filter((c) => c.phone).length;
   const clientListTruncated = (clientsData?.data?.total ?? 0) > allClients.length;
   const smsLength = form.values.sms_body?.length || 0;
+  // MoSMS bills 1 credit per 160-char SMS segment; WhatsApp is 1 credit/message.
+  const smsSegments = Math.max(1, Math.ceil(smsLength / 160));
+  const previewSmsCreditsNeeded = preview ? preview.total * smsSegments : null;
+  const previewWhatsappCreditsNeeded = preview ? preview.total : null;
 
   return (
     <Stack>
@@ -376,6 +389,14 @@ export default function Broadcast() {
                   </Text>
                 )}
               </Alert>
+            )}
+
+            {(showSms || showWhatsapp) && (
+              <Text size="xs" c="dimmed">
+                MoSMS balance: {showSms && <>{smsBalance ?? '—'} SMS credit(s)</>}{showSms && showWhatsapp && ' · '}
+                {showWhatsapp && <>{whatsappBalance ?? '—'} WhatsApp credit(s)</>}
+                {' '}— click "Preview recipients" below to see exactly how many you'll use.
+              </Text>
             )}
 
             <Group>
@@ -557,6 +578,30 @@ export default function Broadcast() {
                 <> {preview.duplicates_removed} duplicate contact(s) (same phone/email on more than one client) were skipped, so no one gets it twice.</>
               )}
             </Text>
+
+            {(channel === 'sms' || channel === 'both') && previewSmsCreditsNeeded !== null && (
+              <Alert
+                variant="light"
+                color={smsBalance !== null && previewSmsCreditsNeeded > smsBalance ? 'red' : 'blue'}
+                icon={<IconInfoCircle size={16} />}
+              >
+                Needs <b>{previewSmsCreditsNeeded}</b> SMS credit(s) ({preview.total} recipient(s) × {smsSegments} segment(s)/message).
+                You have <b>{smsBalance ?? '—'}</b>.
+                {smsBalance !== null && previewSmsCreditsNeeded > smsBalance && ' Top up before sending — it will stop partway otherwise.'}
+              </Alert>
+            )}
+
+            {channel === 'whatsapp' && previewWhatsappCreditsNeeded !== null && (
+              <Alert
+                variant="light"
+                color={whatsappBalance !== null && previewWhatsappCreditsNeeded > whatsappBalance ? 'red' : 'blue'}
+                icon={<IconInfoCircle size={16} />}
+              >
+                Needs <b>{previewWhatsappCreditsNeeded}</b> WhatsApp credit(s). You have <b>{whatsappBalance ?? '—'}</b>.
+                {whatsappBalance !== null && previewWhatsappCreditsNeeded > whatsappBalance && ' Top up before sending — it will stop partway otherwise.'}
+              </Alert>
+            )}
+
             {preview.total === 0 ? (
               <Alert color="yellow" icon={<IconInfoCircle size={18} />}>
                 No clients match this channel/recipient selection.
