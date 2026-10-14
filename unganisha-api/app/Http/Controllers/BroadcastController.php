@@ -80,10 +80,12 @@ class BroadcastController extends Controller
             'failed_count'     => 0,
         ]);
 
-        // Runs after the response is returned — see SendBroadcastJob for why
-        // (no queue worker of this app's own, and WhatsApp sends are
-        // throttled, so this can genuinely take minutes for a large list).
-        SendBroadcastJob::dispatch($broadcast->id, $clients->pluck('id')->all())->afterResponse();
+        // Runs on the dedicated 'broadcasts' queue worker — see SendBroadcastJob
+        // for why (WhatsApp sends are throttled, so a large list can genuinely
+        // take minutes, well past anything safe to run inline on a web worker).
+        SendBroadcastJob::dispatch($broadcast->id, $clients->pluck('id')->all())
+            ->onConnection('database')
+            ->onQueue('broadcasts');
 
         return response()->json([
             'message'          => 'Broadcast started — sending in the background. Refresh History for live progress.',
@@ -144,7 +146,9 @@ class BroadcastController extends Controller
             'retry_of_broadcast_id' => $broadcast->id,
         ]);
 
-        SendBroadcastJob::dispatch($retry->id, $failedIds)->afterResponse();
+        SendBroadcastJob::dispatch($retry->id, $failedIds)
+            ->onConnection('database')
+            ->onQueue('broadcasts');
 
         return response()->json([
             'message'          => 'Resend started for ' . count($failedIds) . ' recipient(s) — refresh History for live progress.',
