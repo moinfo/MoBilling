@@ -510,23 +510,32 @@ export default function Broadcast() {
                       </Table.Td>
                       <Table.Td>{b.sender?.name || '-'}</Table.Td>
                       <Table.Td>
-                        {!b.in_progress && b.failed_count > 0 && (
-                          <Group gap={4} wrap="nowrap">
-                            <Tooltip label="View failed recipients">
-                              <ActionIcon variant="light" color="red" onClick={() => setRecipientsFor({ broadcast: b, status: 'failed' })}>
-                                <IconEye size={15} />
+                        <Group gap={4} wrap="nowrap">
+                          {!b.in_progress && (
+                            <Tooltip label="View real delivery report (not just sent/failed)">
+                              <ActionIcon variant="light" color="blue" onClick={() => navigate(`/broadcast/${b.id}/delivery-report`)}>
+                                <IconChartBar size={15} />
                               </ActionIcon>
                             </Tooltip>
-                            {(b.failed_client_ids?.length ?? 0) > 0 && (
-                              <Tooltip label="Resend to failed recipients only">
-                                <ActionIcon variant="light" color="teal" loading={resendMutation.isPending && resendMutation.variables === b.id}
-                                  onClick={() => resendMutation.mutate(b.id)}>
-                                  <IconRepeat size={15} />
+                          )}
+                          {!b.in_progress && b.failed_count > 0 && (
+                            <>
+                              <Tooltip label="View failed recipients">
+                                <ActionIcon variant="light" color="red" onClick={() => setRecipientsFor({ broadcast: b, status: 'failed' })}>
+                                  <IconEye size={15} />
                                 </ActionIcon>
                               </Tooltip>
-                            )}
-                          </Group>
-                        )}
+                              {(b.failed_client_ids?.length ?? 0) > 0 && (
+                                <Tooltip label="Resend to failed recipients only">
+                                  <ActionIcon variant="light" color="teal" loading={resendMutation.isPending && resendMutation.variables === b.id}
+                                    onClick={() => resendMutation.mutate(b.id)}>
+                                    <IconRepeat size={15} />
+                                  </ActionIcon>
+                                </Tooltip>
+                              )}
+                            </>
+                          )}
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
                   ))}

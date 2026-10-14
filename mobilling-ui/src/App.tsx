@@ -81,6 +81,7 @@ import Sms from './pages/Sms';
 import Subscription from './pages/Subscription';
 import Automation from './pages/Automation';
 import Broadcast from './pages/Broadcast';
+import BroadcastDeliveryReport from './pages/BroadcastDeliveryReport';
 import WhatsappContacts from './pages/WhatsappContacts';
 import HostingAccounts from './pages/HostingAccounts';
 import DiscoverHostingAccounts from './pages/DiscoverHostingAccounts';
@@ -324,6 +325,7 @@ export default function App() {
                   <Route path="/appointments" element={<Appointments />} />
                   <Route path="/automation" element={<Automation />} />
                   <Route path="/broadcast" element={<Broadcast />} />
+                  <Route path="/broadcast/:id/delivery-report" element={<BroadcastDeliveryReport />} />
                   <Route path="/whatsapp-contacts" element={<WhatsappContacts />} />
                   <Route path="/hosting" element={<HostingAccounts />} />
                   <Route path="/hosting/discover" element={<DiscoverHostingAccounts />} />

@@ -93,3 +93,31 @@ export const getMosmsContacts = () =>
 
 export const resendFailedBroadcast = (id: string) =>
   api.post<{ message: string; broadcast_id: string; total_recipients: number }>(`/broadcasts/${id}/resend-failed`);
+
+export interface BroadcastDeliveryMessage {
+  id: string;
+  recipient: string;
+  client_name: string | null;
+  status: string;
+  error: string | null;
+  delivery_status: string | null;
+  delivered_at: string | null;
+  delivery_error: string | null;
+}
+
+export interface BroadcastDeliveryReport {
+  broadcast: { id: string; channel: string; subject: string | null; created_at: string };
+  summary: {
+    total: number;
+    api_sent: number;
+    api_failed: number;
+    delivery_tracked: number;
+    delivered: number;
+    delivery_failed: number;
+    delivery_pending: number;
+  };
+  messages: BroadcastDeliveryMessage[];
+}
+
+export const getBroadcastDeliveryReport = (id: string) =>
+  api.get<BroadcastDeliveryReport>(`/broadcasts/${id}/delivery-report`);
