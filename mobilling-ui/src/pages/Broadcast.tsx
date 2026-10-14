@@ -77,12 +77,23 @@ export default function Broadcast() {
     queryKey: ['broadcast-mosms-contacts'],
     queryFn: () => getMosmsContacts(),
   });
-  const mosmsContactOptions = (mosmsContactsData?.data?.data || [])
-    .filter((c) => c.phone)
-    .map((c) => ({
-      value: c.phone as string,
-      label: `${c.name || c.phone}${c.email ? ` (${c.email})` : ''}`,
-    }));
+  const mosmsContactOptions = Array.from(
+    (mosmsContactsData?.data?.data || [])
+      .filter((c) => c.phone)
+      // MoSMS's own address book can have the same phone saved more than once
+      // (e.g. under different names) — Mantine's MultiSelect requires unique
+      // option values, and sending would dedupe them anyway, so collapse here.
+      .reduce((map, c) => {
+        if (!map.has(c.phone as string)) {
+          map.set(c.phone as string, {
+            value: c.phone as string,
+            label: `${c.name || c.phone}${c.email ? ` (${c.email})` : ''}`,
+          });
+        }
+        return map;
+      }, new Map<string, { value: string; label: string }>())
+      .values(),
+  );
 
   // Fetch broadcast history — polls while anything on this page is still
   // sending in the background (broadcasts now dispatch after the response
