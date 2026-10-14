@@ -35,10 +35,10 @@ const TEMPLATES: Record<string, { subject: string; body: string; sms_body: strin
     whatsapp_body: 'Dear Client,\n\nOur services will be unavailable on [date] due to [reason]. We expect to resume normal operations by [time/date]. We apologise for any inconvenience.',
   },
   holiday: {
-    subject: 'Happy [Holiday Name]!',
-    body: 'Dear Client,\n\nAs we mark [holiday name], we want to take a moment to thank you for trusting us with your websites, domains and hosting this year.\n\nOur offices will be closed from [date(s)], and we will be back to normal business hours on [return date]. Your services keep running as usual during this time — our servers don\'t take a holiday!\n\nIf anything urgent comes up, reach us on this WhatsApp number and we will respond as soon as we are back.\n\nWishing you and your family a peaceful and joyful [holiday name]!\n\n— The MoBilling Team',
-    sms_body: 'Happy [holiday name] from MoBilling! Our offices are closed [date(s)], back on [return date]. Your services continue running normally. For urgent issues, WhatsApp us.',
-    whatsapp_body: 'Dear Client,\n\nAs we mark *[holiday name]*, we want to thank you for trusting us with your websites, domains and hosting this year. 🎉\n\nOur offices will be closed from *[date(s)]*, resuming normal business hours on *[return date]*. Your services keep running as usual — our servers don\'t take a holiday!\n\nFor anything urgent, just reply here and we will get back to you as soon as we are back.\n\nWishing you and your family a peaceful and joyful [holiday name]!\n\n— The MoBilling Team',
+    subject: 'Holiday Notice',
+    body: 'Dear Client,\n\nPlease note that our offices will be closed on [date(s)] for [holiday name].\n\nWe will resume normal business hours on [return date].\n\nWishing you a wonderful holiday!',
+    sms_body: 'Our offices will be closed [date(s)] for [holiday]. We resume on [return date].',
+    whatsapp_body: 'Dear Client,\n\nPlease note that our offices will be closed on [date(s)] for [holiday name]. We resume normal business hours on [return date]. Wishing you a wonderful holiday!',
   },
   general: {
     subject: 'Important Announcement',
