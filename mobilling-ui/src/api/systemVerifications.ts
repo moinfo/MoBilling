@@ -48,6 +48,10 @@ export interface SystemVerification {
   // Resolved by the backend — never null; a system created before this
   // setting existed reports all four (SystemVerification::requiredFields()).
   required_fields: string[];
+  // Who the assigned staff can call if something looks wrong while
+  // checking this specific system. Both optional.
+  support_contact_name: string | null;
+  support_contact_phone: string | null;
   is_active: boolean;
   assigned_user_id: string | null;
   assigned_user?: { id: string; name: string };
@@ -66,6 +70,8 @@ export interface SystemVerificationPayload {
   assigned_user_id?: string | null;
   is_active?: boolean;
   required_fields?: string[] | null;
+  support_contact_name?: string | null;
+  support_contact_phone?: string | null;
 }
 
 export interface SystemVerificationReport {

@@ -6,7 +6,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  IconCheck, IconAlertTriangle, IconClock, IconShield, IconClipboardCheck, IconWorld, IconCopy, IconEye, IconEyeOff, IconLock, IconUser,
+  IconCheck, IconAlertTriangle, IconClock, IconShield, IconClipboardCheck, IconWorld, IconCopy, IconEye, IconEyeOff, IconLock, IconUser, IconPhone,
 } from '@tabler/icons-react';
 import {
   getMyVerifications, submitVerificationReport, getVerificationFields,
@@ -216,6 +216,17 @@ export default function MyVerifications() {
                             </CopyButton>
                           </Group>
                         )}
+                      </Group>
+                    )}
+                    {s.support_contact_phone && (
+                      <Group gap={6} mt={4}>
+                        <IconPhone size={12} color="var(--mantine-color-gray-6)" />
+                        <Text size="xs" c="dimmed">
+                          Msaada: {s.support_contact_name ? `${s.support_contact_name} — ` : ''}
+                          <Text span component="a" href={`tel:${s.support_contact_phone}`} c="blue" fw={500}>
+                            {s.support_contact_phone}
+                          </Text>
+                        </Text>
                       </Group>
                     )}
                     {done && (

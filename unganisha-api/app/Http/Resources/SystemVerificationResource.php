@@ -30,6 +30,8 @@ class SystemVerificationResource extends JsonResource
             // Resolved (never null) — a system created before this setting
             // existed still reports all four, via requiredFields()'s default.
             'required_fields' => $this->requiredFields(),
+            'support_contact_name' => $this->support_contact_name,
+            'support_contact_phone' => $this->support_contact_phone,
             'is_active' => (bool) $this->is_active,
             'assigned_user_id' => $this->assigned_user_id,
             'assigned_user' => $this->when($this->relationLoaded('assignedUser') && $this->assignedUser, fn () => [

@@ -49,6 +49,10 @@ class StoreSystemVerificationRequest extends FormRequest
                 array_keys(SystemVerification::AVAILABLE_FIELDS),
                 SystemVerificationFieldDefinition::where('tenant_id', $tenantId)->pluck('key')->all()
             )),
+            // Who the assigned staff can call if something looks wrong while
+            // checking this system. Both optional.
+            'support_contact_name' => 'nullable|string|max:255',
+            'support_contact_phone' => 'nullable|string|max:30',
         ];
     }
 }

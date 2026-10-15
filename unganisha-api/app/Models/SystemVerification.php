@@ -35,6 +35,10 @@ class SystemVerification extends Model
         'window_from', 'window_to',
         'assigned_user_id', 'is_active',
         'required_fields',
+        // Who the assigned staff should call if something looks wrong while
+        // checking this specific system — not necessarily the same person
+        // for every system, so it lives here rather than on the tenant.
+        'support_contact_name', 'support_contact_phone',
     ];
 
     protected $casts = [

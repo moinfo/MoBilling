@@ -84,11 +84,14 @@ export default function SystemVerifications() {
     assigned_user_id: string;
     is_active: boolean;
     required_fields: string[];
+    support_contact_name: string;
+    support_contact_phone: string;
   }>({
     initialValues: {
       name: '', domain_name: '', client_id: '', login_username: '', login_password: '',
       window_from: '', window_to: '', assigned_user_id: '', is_active: true,
       required_fields: VERIFICATION_FIELD_DEFS.map((f) => f.key),
+      support_contact_name: '', support_contact_phone: '',
     },
     validate: {
       name: (v) => (v.trim() ? null : 'Required'),
@@ -103,6 +106,7 @@ export default function SystemVerifications() {
       name: '', domain_name: '', client_id: '', login_username: '', login_password: '',
       window_from: '', window_to: '', assigned_user_id: '', is_active: true,
       required_fields: VERIFICATION_FIELD_DEFS.map((f) => f.key),
+      support_contact_name: '', support_contact_phone: '',
     });
     setFormOpen(true);
   };
@@ -119,6 +123,8 @@ export default function SystemVerifications() {
       assigned_user_id: s.assigned_user_id || '',
       is_active: s.is_active,
       required_fields: s.required_fields?.length ? s.required_fields : VERIFICATION_FIELD_DEFS.map((f) => f.key),
+      support_contact_name: s.support_contact_name || '',
+      support_contact_phone: s.support_contact_phone || '',
     });
     setFormOpen(true);
   };
@@ -135,6 +141,8 @@ export default function SystemVerifications() {
     assigned_user_id: v.assigned_user_id || null,
     is_active: v.is_active,
     required_fields: v.required_fields,
+    support_contact_name: v.support_contact_name || null,
+    support_contact_phone: v.support_contact_phone || null,
   });
 
   const createMutation = useMutation({
@@ -302,6 +310,13 @@ export default function SystemVerifications() {
                 ))}
               </Group>
             </Checkbox.Group>
+            <Group grow>
+              <TextInput label="Support Contact Name" placeholder="e.g. Juma Mkuu"
+                description="Who to call if something looks wrong"
+                {...form.getInputProps('support_contact_name')} />
+              <TextInput label="Support Contact Phone" placeholder="e.g. 0712345678"
+                {...form.getInputProps('support_contact_phone')} />
+            </Group>
             <Switch label="Active (staff must report daily)" {...form.getInputProps('is_active', { type: 'checkbox' })} />
             <Group justify="flex-end">
               <Button variant="default" onClick={closeForm}>Cancel</Button>
