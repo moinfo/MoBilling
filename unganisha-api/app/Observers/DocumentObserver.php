@@ -65,6 +65,36 @@ class DocumentObserver
             }
         }
 
+        // Reseller wallet top-up invoices: this Document lives under Moinfotech's
+        // OWN tenant (billed to the reseller's Client record there), while the
+        // TenantWalletTopup it pays for belongs to the RESELLER's own tenant — so
+        // crediting has to go to that other tenant, not $document->tenant_id.
+        $walletTopups = \App\Models\TenantWalletTopup::withoutGlobalScopes()
+            ->where('document_id', $document->id)
+            ->where('status', 'pending')
+            ->get();
+
+        foreach ($walletTopups as $topup) {
+            $walletTenant = \App\Models\Tenant::withoutGlobalScopes()->find($topup->tenant_id);
+            if (!$walletTenant) {
+                continue;
+            }
+
+            app(\App\Services\TenantWalletService::class)->topUp(
+                $walletTenant,
+                (float) $topup->amount,
+                $document->document_number,
+                "Lipa Number invoice {$document->document_number} paid, confirmed via Invoices.",
+                null,
+            );
+
+            $topup->update([
+                'status'               => 'completed',
+                'completed_at'         => now(),
+                'payment_method_used'  => $topup->order_tracking_id ? 'pesapal' : 'lipa_number',
+            ]);
+        }
+
         // Plan upgrades: apply the pending change once its invoice is paid.
         $pendingChanges = \App\Models\ClientSubscription::withoutGlobalScopes()
             ->where('tenant_id', $document->tenant_id)

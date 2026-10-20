@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, Button, Modal, Textarea, Tabs,
   ScrollArea, LoadingOverlay, Alert, SimpleGrid, Divider, List, NumberInput, TextInput,
@@ -23,6 +24,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 export default function ResellerApplications() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<string>('pending');
   const [selected, setSelected] = useState<ResellerApplicationStaffRecord | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -250,9 +252,16 @@ export default function ResellerApplications() {
                             <Table.Td>{t.reference}</Table.Td>
                             <Table.Td>{t.amount.toLocaleString()}</Table.Td>
                             <Table.Td>
-                              <Button size="compact-xs" color="green" onClick={() => openConfirmTopup(t)}>
-                                Confirm paid
-                              </Button>
+                              {t.document_id ? (
+                                <Button size="compact-xs" color="blue" variant="light"
+                                  onClick={() => navigate(`/invoices?preview=${t.document_id}`)}>
+                                  Open invoice
+                                </Button>
+                              ) : (
+                                <Button size="compact-xs" color="green" onClick={() => openConfirmTopup(t)}>
+                                  Confirm paid
+                                </Button>
+                              )}
                             </Table.Td>
                           </Table.Tr>
                         ))}

@@ -15,6 +15,7 @@ export interface WalletPendingTopup {
   amount: number;
   method: 'pesapal' | 'lipa_number';
   reference: string;
+  document_id: string | null;
   created_at: string;
 }
 

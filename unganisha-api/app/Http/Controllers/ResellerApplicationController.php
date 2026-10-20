@@ -158,11 +158,12 @@ class ResellerApplicationController extends Controller
             ->where('status', 'pending')
             ->latest('created_at')->limit(20)->get()
             ->map(fn (TenantWalletTopup $t) => [
-                'id'         => $t->id,
-                'amount'     => (float) $t->amount,
-                'method'     => $t->order_tracking_id ? 'pesapal' : 'lipa_number',
-                'reference'  => WalletTopupInvoicePdfService::reference($t),
-                'created_at' => $t->created_at,
+                'id'          => $t->id,
+                'amount'      => (float) $t->amount,
+                'method'      => $t->order_tracking_id ? 'pesapal' : 'lipa_number',
+                'reference'   => WalletTopupInvoicePdfService::reference($t),
+                'document_id' => $t->document_id,
+                'created_at'  => $t->created_at,
             ]);
 
         return response()->json(['data' => [
@@ -202,6 +203,14 @@ class ResellerApplicationController extends Controller
                 ->first();
             if (!$topup) {
                 return response()->json(['message' => 'That pending top-up was not found or is no longer pending.'], 422);
+            }
+            // Has a real invoice under Moinfotech's own tenant (see TenantWalletController::
+            // topupInvoice) — record the payment there instead (Invoices > record payment),
+            // which recomputes the invoice's own status correctly (sent/partial/paid) and
+            // credits the wallet via DocumentObserver. Confirming it here instead would
+            // credit the wallet but leave that invoice looking permanently unpaid.
+            if ($topup->document_id) {
+                return response()->json(['message' => 'This top-up has its own invoice — record the payment on that invoice (Invoices page) instead of confirming it here.'], 422);
             }
         }
 

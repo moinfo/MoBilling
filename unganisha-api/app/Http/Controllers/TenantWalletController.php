@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
+use App\Models\ResellerApplication;
 use App\Models\TenantWalletTopup;
 use App\Models\TenantWalletTransaction;
+use App\Services\DocumentNumberService;
 use App\Services\PesapalService;
 use App\Services\TenantWalletService;
 use App\Services\WalletTopupInvoicePdfService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -40,11 +44,12 @@ class TenantWalletController extends Controller
             ->where('status', 'pending')
             ->latest('created_at')->limit(20)->get()
             ->map(fn (TenantWalletTopup $t) => [
-                'id'         => $t->id,
-                'amount'     => (float) $t->amount,
-                'method'     => $t->order_tracking_id ? 'pesapal' : 'lipa_number',
-                'reference'  => WalletTopupInvoicePdfService::reference($t),
-                'created_at' => $t->created_at,
+                'id'          => $t->id,
+                'amount'      => (float) $t->amount,
+                'method'      => $t->order_tracking_id ? 'pesapal' : 'lipa_number',
+                'reference'   => WalletTopupInvoicePdfService::reference($t),
+                'document_id' => $t->document_id,
+                'created_at'  => $t->created_at,
             ]);
 
         return response()->json(['data' => [
@@ -119,11 +124,15 @@ class TenantWalletController extends Controller
     }
 
     /**
-     * Self-service manual top-up: creates a pending request and hands back an invoice
-     * (PDF) carrying our Lipa Number / bank details + a reference to quote. No online
-     * gateway involved — staff confirm receipt and credit the wallet the same way as
-     * any other "paid outside" top-up (ResellerApplicationController::walletTopup),
-     * once the payment actually lands.
+     * Self-service manual top-up: creates a pending request, a REAL invoice under
+     * Moinfotech's own tenant (so it shows up on Moinfotech's own /invoices list,
+     * billed to this reseller's own Client record there — a white-label reseller
+     * is "linked" to Moinfotech via the wallet, not a normal per-service invoice,
+     * so without this the money owed was only ever visible on this isolated wallet
+     * screen, never on the books Moinfotech staff actually work from), and hands
+     * back a PDF carrying our Lipa Number / bank details + a reference to quote.
+     * No online gateway involved — staff mark the invoice paid the normal way
+     * (Invoices > record payment), which credits the wallet via DocumentObserver.
      */
     public function topupInvoice(Request $request)
     {
@@ -134,14 +143,55 @@ class TenantWalletController extends Controller
             return response()->json(['message' => 'This tenant does not use the reseller wallet.'], 422);
         }
 
+        $platformTenantId = config('portal.storefront_tenant_id');
+        $billingClientId = $platformTenantId
+            ? ResellerApplication::withoutGlobalScopes()
+                ->where('provisioned_tenant_id', $tenant->id)
+                ->whereNotNull('client_id')
+                ->latest('created_at')->value('client_id')
+            : null;
+
+        if (!$platformTenantId || !$billingClientId) {
+            return response()->json(['message' => 'Could not find your billing account. Please contact support to top up.'], 422);
+        }
+
         $data = $request->validate(['amount' => 'required|numeric|min:1000']);
 
-        $topup = TenantWalletTopup::withoutGlobalScopes()->create([
-            'tenant_id'    => $tenant->id,
-            'requested_by' => $user->id,
-            'amount'       => $data['amount'],
-            'status'       => 'pending',
-        ]);
+        $topup = DB::transaction(function () use ($tenant, $user, $data, $platformTenantId, $billingClientId) {
+            $document = Document::withoutGlobalScopes()->create([
+                'tenant_id'       => $platformTenantId,
+                'client_id'       => $billingClientId,
+                'type'            => 'invoice',
+                'document_number' => app(DocumentNumberService::class)->generate('invoice', $platformTenantId),
+                'date'            => now()->toDateString(),
+                'due_date'        => now()->addDays(3)->toDateString(),
+                'subtotal'        => $data['amount'],
+                'discount_amount' => 0,
+                'tax_amount'      => 0,
+                'total'           => $data['amount'],
+                'status'          => 'sent',
+                'notes'           => "Reseller wallet top-up — {$tenant->name}",
+                'created_by'      => $user->id,
+            ]);
+
+            $document->items()->create([
+                'item_type'   => 'service',
+                'description' => "Wallet Top-up — {$tenant->name}",
+                'quantity'    => 1,
+                'price'       => $data['amount'],
+                'tax_percent' => 0,
+                'tax_amount'  => 0,
+                'total'       => $data['amount'],
+            ]);
+
+            return TenantWalletTopup::withoutGlobalScopes()->create([
+                'tenant_id'    => $tenant->id,
+                'requested_by' => $user->id,
+                'document_id'  => $document->id,
+                'amount'       => $data['amount'],
+                'status'       => 'pending',
+            ]);
+        });
 
         return response()->json([
             'data'    => ['topup_id' => $topup->id, 'reference' => WalletTopupInvoicePdfService::reference($topup)],

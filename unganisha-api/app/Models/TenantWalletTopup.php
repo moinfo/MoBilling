@@ -12,7 +12,7 @@ class TenantWalletTopup extends Model
     use HasUuids, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'requested_by', 'amount', 'status',
+        'tenant_id', 'requested_by', 'document_id', 'amount', 'status',
         'order_tracking_id', 'pesapal_redirect_url', 'payment_status_description',
         'confirmation_code', 'payment_method_used', 'gateway_response', 'completed_at',
     ];
