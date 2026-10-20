@@ -11,6 +11,7 @@ import {
   IconLock, IconShieldCheck, IconKey, IconSun, IconMoon, IconArrowLeft, IconAlertCircle,
 } from '@tabler/icons-react';
 import { resetPassword } from '../api/auth';
+import { useBrandingInfo } from '../branding';
 
 const tips = [
   { icon: IconKey, text: 'Choose a strong password with at least 8 characters' },
@@ -22,6 +23,7 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const branding = useBrandingInfo();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
@@ -116,8 +118,8 @@ export default function ResetPassword() {
         />
 
         <Group gap={12} mb={rem(48)}>
-          <Image src="/moinfotech-logo.png" h={44} w="auto" alt="MoBilling" />
-          <Text size={rem(28)} fw={800} c="white">MoBilling</Text>
+          <Image src={branding.branded ? (branding.logo_url || '/moinfotech-logo.png') : '/moinfotech-logo.png'} h={44} w="auto" alt={branding.branded ? branding.name : 'MoBilling'} />
+          <Text size={rem(28)} fw={800} c="white">{branding.branded ? branding.name : 'MoBilling'}</Text>
         </Group>
 
         <Title order={2} c="white" fw={700} mb="sm" style={{ lineHeight: 1.3 }}>
@@ -148,7 +150,7 @@ export default function ResetPassword() {
         </List>
 
         <Text size="xs" c="rgba(255,255,255,0.25)" mt="auto" pt={rem(60)}>
-          &copy; {new Date().getFullYear()} Moinfotech. All rights reserved.
+          &copy; {new Date().getFullYear()} {branding.branded ? branding.name : 'Moinfotech'}. All rights reserved.
         </Text>
       </Box>
 
@@ -186,8 +188,8 @@ export default function ResetPassword() {
 
         <Box w="100%" maw={400}>
           <Group justify="center" gap={8} mb="md" hiddenFrom="md">
-            <Image src="/moinfotech-logo.png" h={36} w="auto" alt="MoBilling" />
-            <Text size="xl" fw={800}>MoBilling</Text>
+            <Image src={branding.branded ? (branding.logo_url || '/moinfotech-logo.png') : '/moinfotech-logo.png'} h={36} w="auto" alt={branding.branded ? branding.name : 'MoBilling'} />
+            <Text size="xl" fw={800}>{branding.branded ? branding.name : 'MoBilling'}</Text>
           </Group>
 
           <Title order={2} ta="center" mb={4}>New password</Title>

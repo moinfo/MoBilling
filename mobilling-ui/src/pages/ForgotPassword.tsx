@@ -12,6 +12,7 @@ import {
   IconUserPlus,
 } from '@tabler/icons-react';
 import { forgotPassword, verifyResetOtp, resetPassword } from '../api/auth';
+import { useBrandingInfo } from '../branding';
 
 const tips = [
   { icon: IconMail, text: 'A verification code will be sent to your email, SMS, and/or WhatsApp' },
@@ -23,6 +24,7 @@ type Step = 'request' | 'verify' | 'reset' | 'done';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
+  const branding = useBrandingInfo();
   // The sign-in page deep-links here as ?channel=whatsapp for its "WhatsApp
   // sign-in code" action, so the code is delivered over WhatsApp rather than
   // email. Any other value falls through to the API's default (email + SMS).
@@ -169,8 +171,8 @@ export default function ForgotPassword() {
         />
 
         <Group gap={12} mb={rem(48)}>
-          <Image src="/moinfotech-logo.png" h={44} w="auto" alt="MoBilling" />
-          <Text size={rem(28)} fw={800} c="white">MoBilling</Text>
+          <Image src={branding.branded ? (branding.logo_url || '/moinfotech-logo.png') : '/moinfotech-logo.png'} h={44} w="auto" alt={branding.branded ? branding.name : 'MoBilling'} />
+          <Text size={rem(28)} fw={800} c="white">{branding.branded ? branding.name : 'MoBilling'}</Text>
         </Group>
 
         <Title order={2} c="white" fw={700} mb="sm" style={{ lineHeight: 1.3 }}>
@@ -201,7 +203,7 @@ export default function ForgotPassword() {
         </List>
 
         <Text size="xs" c="rgba(255,255,255,0.25)" mt="auto" pt={rem(60)}>
-          &copy; {new Date().getFullYear()} Moinfotech. All rights reserved.
+          &copy; {new Date().getFullYear()} {branding.branded ? branding.name : 'Moinfotech'}. All rights reserved.
         </Text>
       </Box>
 
@@ -239,8 +241,8 @@ export default function ForgotPassword() {
 
         <Box w="100%" maw={400}>
           <Group justify="center" gap={8} mb="md" hiddenFrom="md">
-            <Image src="/moinfotech-logo.png" h={36} w="auto" alt="MoBilling" />
-            <Text size="xl" fw={800}>MoBilling</Text>
+            <Image src={branding.branded ? (branding.logo_url || '/moinfotech-logo.png') : '/moinfotech-logo.png'} h={36} w="auto" alt={branding.branded ? branding.name : 'MoBilling'} />
+            <Text size="xl" fw={800}>{branding.branded ? branding.name : 'MoBilling'}</Text>
           </Group>
 
           {/* Step 1: Enter email or phone */}

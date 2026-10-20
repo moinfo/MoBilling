@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { safeNext } from '../utils/safeNext';
 import { verifyAndRegisterPortal } from '../api/auth';
+import { useBrandingInfo } from '../branding';
 import '../theme/marketing.css';
 import styles from './Login.module.css';
 
@@ -44,6 +45,7 @@ function validateCredentials(identifier: string, password: string): string | nul
 
 export default function Login() {
   const { login, completeTwoFactorLogin } = useAuth();
+  const branding = useBrandingInfo();
   const navigate = useNavigate();
   // Set when the visitor came from an /order/* link — see OrderRoute.
   const next = safeNext(useLocation().search);
@@ -218,46 +220,61 @@ export default function Login() {
 
           <div className={styles.brandTop}>
             <Link className={styles.brand} to="/">
-              <img src="/moinfotech-logo.png" alt="" />
-              <span className={styles.wordmark}>MoBilling</span>
+              <img src={branding.branded ? (branding.logo_url || '/moinfotech-logo.png') : '/moinfotech-logo.png'} alt="" />
+              <span className={styles.wordmark}>{branding.branded ? branding.name : 'MoBilling'}</span>
             </Link>
           </div>
 
           <div className={styles.brandMiddle}>
-            <div className={styles.pill}>
-              <span className={styles.pillDot} />
-              BUILT FOR EAST AFRICA
-            </div>
-            <h1 className={styles.title}>Billing &amp; statutory management made simple</h1>
-            <p className={styles.blurb}>
-              Streamline your invoicing, track payments and stay compliant — all in one platform.
-            </p>
-            <div className={styles.benefits}>
-              {BENEFITS.map((b) => (
-                <div key={b.text} className={styles.benefit}>
-                  <span className={styles.benefitTile}>
-                    <b.icon size={20} color={b.color} />
-                  </span>
-                  {b.text}
+            {branding.branded ? (
+              <h1 className={styles.title}>Welcome back</h1>
+            ) : (
+              <>
+                <div className={styles.pill}>
+                  <span className={styles.pillDot} />
+                  BUILT FOR EAST AFRICA
                 </div>
-              ))}
-            </div>
-            <div className={styles.statStrip}>
-              {STATS.map((s, i) => (
-                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-                  {i > 0 && <span className={styles.statDivider} />}
-                  <div>
-                    <div className={styles.statValue}>{s.value}</div>
-                    <div className={styles.statLabel}>{s.label}</div>
-                  </div>
+                <h1 className={styles.title}>Billing &amp; statutory management made simple</h1>
+                <p className={styles.blurb}>
+                  Streamline your invoicing, track payments and stay compliant — all in one platform.
+                </p>
+                <div className={styles.benefits}>
+                  {BENEFITS.map((b) => (
+                    <div key={b.text} className={styles.benefit}>
+                      <span className={styles.benefitTile}>
+                        <b.icon size={20} color={b.color} />
+                      </span>
+                      {b.text}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div className={styles.statStrip}>
+                  {STATS.map((s, i) => (
+                    <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+                      {i > 0 && <span className={styles.statDivider} />}
+                      <div>
+                        <div className={styles.statValue}>{s.value}</div>
+                        <div className={styles.statLabel}>{s.label}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className={styles.brandBottom}>
-            <span>© {new Date().getFullYear()} MOINFOTECH. ALL RIGHTS RESERVED.</span>
-            <span>INFO@MOINFO.CO.TZ</span>
+            {branding.branded ? (
+              <>
+                <span>© {new Date().getFullYear()} {branding.name?.toUpperCase()}. ALL RIGHTS RESERVED.</span>
+                {branding.email && <span>{branding.email.toUpperCase()}</span>}
+              </>
+            ) : (
+              <>
+                <span>© {new Date().getFullYear()} MOINFOTECH. ALL RIGHTS RESERVED.</span>
+                <span>INFO@MOINFO.CO.TZ</span>
+              </>
+            )}
           </div>
         </aside>
 
@@ -281,8 +298,8 @@ export default function Login() {
           <div className={styles.stage}>
             <div className={styles.mobileBrand}>
               <Link className={styles.brand} to="/" style={{ color: 'var(--mk-text)' }}>
-                <img src="/moinfotech-logo.png" alt="" />
-                <span className={styles.wordmark}>MoBilling</span>
+                <img src={branding.branded ? (branding.logo_url || '/moinfotech-logo.png') : '/moinfotech-logo.png'} alt="" />
+                <span className={styles.wordmark}>{branding.branded ? branding.name : 'MoBilling'}</span>
               </Link>
             </div>
 
