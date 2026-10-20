@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\ResellerApplication;
+use App\Models\TenantWalletTopup;
 use App\Notifications\ResellerApplicationDecidedNotification;
 use App\Services\ResellerProvisioningService;
+use App\Services\WalletTopupInvoicePdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Notification;
 
@@ -147,7 +149,27 @@ class ResellerApplicationController extends Controller
         $ledger = \App\Models\TenantWalletTransaction::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)->latest('created_at')->limit(50)->get();
 
-        return response()->json(['data' => ['balance' => (float) $tenant->wallet_balance, 'ledger' => $ledger]]);
+        // Pending top-up requests this reseller has already generated (a self-service
+        // "Pay via Lipa Number" invoice, or an unpaid Pesapal attempt) — staff need to
+        // see these to know there's a manual payment to go confirm, not just the
+        // ledger of what's already settled.
+        $pendingTopups = TenantWalletTopup::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'pending')
+            ->latest('created_at')->limit(20)->get()
+            ->map(fn (TenantWalletTopup $t) => [
+                'id'         => $t->id,
+                'amount'     => (float) $t->amount,
+                'method'     => $t->order_tracking_id ? 'pesapal' : 'lipa_number',
+                'reference'  => WalletTopupInvoicePdfService::reference($t),
+                'created_at' => $t->created_at,
+            ]);
+
+        return response()->json(['data' => [
+            'balance'        => (float) $tenant->wallet_balance,
+            'ledger'         => $ledger,
+            'pending_topups' => $pendingTopups,
+        ]]);
     }
 
     /** Staff-confirmed "paid outside" top-up — same audit rigor as OfflinePaymentService (amount, reference, notes, who). */
@@ -163,16 +185,35 @@ class ResellerApplicationController extends Controller
             'amount'    => 'required|numeric|min:1',
             'reference' => 'nullable|string|max:255',
             'notes'     => 'nullable|string|max:2000',
+            'topup_id'  => 'nullable|uuid',
         ]);
 
         $tenant = \App\Models\Tenant::withoutGlobalScopes()->findOrFail($resellerApplication->provisioned_tenant_id);
+
+        // Confirming a specific pending invoice (self-service Lipa Number/Pesapal
+        // request) rather than an ad hoc "paid outside" entry — close it out so it
+        // stops showing as pending everywhere it's surfaced.
+        $topup = null;
+        if (!empty($data['topup_id'])) {
+            $topup = TenantWalletTopup::withoutGlobalScopes()
+                ->where('id', $data['topup_id'])
+                ->where('tenant_id', $tenant->id)
+                ->where('status', 'pending')
+                ->first();
+            if (!$topup) {
+                return response()->json(['message' => 'That pending top-up was not found or is no longer pending.'], 422);
+            }
+        }
+
         $newBalance = $wallet->topUp(
             $tenant,
             (float) $data['amount'],
-            $data['reference'] ?? null,
+            $data['reference'] ?? $topup?->id,
             'Paid outside, confirmed by staff. ' . ($data['notes'] ?? ''),
             $request->user()->id,
         );
+
+        $topup?->update(['status' => 'completed', 'completed_at' => now(), 'payment_method_used' => $topup->order_tracking_id ? 'pesapal' : 'lipa_number']);
 
         return response()->json(['data' => ['balance' => $newBalance], 'message' => 'Wallet topped up.']);
     }

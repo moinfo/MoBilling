@@ -34,6 +34,7 @@ export default function ResellerApplications() {
   const [topupAmount, setTopupAmount] = useState<number | ''>('');
   const [topupReference, setTopupReference] = useState('');
   const [topupNotes, setTopupNotes] = useState('');
+  const [topupId, setTopupId] = useState<string | undefined>(undefined);
 
   const { data, isLoading } = useQuery({
     queryKey: ['reseller-applications', status],
@@ -95,6 +96,7 @@ export default function ResellerApplications() {
       amount: Number(topupAmount),
       reference: topupReference || undefined,
       notes: topupNotes || undefined,
+      topup_id: topupId,
     }),
     onSuccess: (res) => {
       notifications.show({ title: 'Wallet topped up', message: res.data.message, color: 'green' });
@@ -103,9 +105,17 @@ export default function ResellerApplications() {
       setTopupAmount('');
       setTopupReference('');
       setTopupNotes('');
+      setTopupId(undefined);
     },
     onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not top up.', color: 'red' }),
   });
+
+  const openConfirmTopup = (pending?: { id: string; amount: number; reference: string }) => {
+    setTopupAmount(pending?.amount ?? '');
+    setTopupReference(pending?.reference ?? '');
+    setTopupId(pending?.id);
+    setTopupOpen(true);
+  };
 
   return (
     <Stack gap="lg">
@@ -220,10 +230,36 @@ export default function ResellerApplications() {
                   <Text size="lg" fw={600}>
                     {wallet ? `TZS ${wallet.balance.toLocaleString()}` : '—'}
                   </Text>
-                  <Button size="xs" leftSection={<IconWallet size={14} />} onClick={() => setTopupOpen(true)}>
+                  <Button size="xs" leftSection={<IconWallet size={14} />} onClick={() => openConfirmTopup()}>
                     Top up (paid outside)
                   </Button>
                 </Group>
+
+                {wallet && wallet.pending_topups.length > 0 && (
+                  <>
+                    <Text size="xs" fw={600} c="dimmed">Pending top-ups — awaiting confirmation</Text>
+                    <Table striped fz="sm">
+                      <Table.Thead>
+                        <Table.Tr><Table.Th>Date</Table.Th><Table.Th>Method</Table.Th><Table.Th>Reference</Table.Th><Table.Th>Amount</Table.Th><Table.Th></Table.Th></Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {wallet.pending_topups.map((t) => (
+                          <Table.Tr key={t.id}>
+                            <Table.Td>{new Date(t.created_at).toLocaleString()}</Table.Td>
+                            <Table.Td><Badge size="xs" color="yellow" variant="light">{t.method === 'lipa_number' ? 'Lipa Number' : 'Pesapal'}</Badge></Table.Td>
+                            <Table.Td>{t.reference}</Table.Td>
+                            <Table.Td>{t.amount.toLocaleString()}</Table.Td>
+                            <Table.Td>
+                              <Button size="compact-xs" color="green" onClick={() => openConfirmTopup(t)}>
+                                Confirm paid
+                              </Button>
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </>
+                )}
 
                 {wallet && wallet.ledger.length > 0 && (
                   <ScrollArea mah={220}>
@@ -278,16 +314,22 @@ export default function ResellerApplications() {
         </Stack>
       </Modal>
 
-      <Modal opened={topupOpen} onClose={() => setTopupOpen(false)} title={`Top up wallet — ${selected?.brand_name}`}>
+      <Modal opened={topupOpen} onClose={() => { setTopupOpen(false); setTopupId(undefined); }} title={`Top up wallet — ${selected?.brand_name}`}>
         <Stack gap="sm">
-          <Text size="sm" c="dimmed">Record a top-up the reseller paid outside the system (bank, cash, mobile money). Their wallet balance is credited immediately.</Text>
+          {topupId ? (
+            <Alert icon={<IconInfoCircle size={16} />} color="blue">
+              Confirming the reseller's own "{topupReference}" invoice as paid. This marks it settled and credits the wallet.
+            </Alert>
+          ) : (
+            <Text size="sm" c="dimmed">Record a top-up the reseller paid outside the system (bank, cash, mobile money). Their wallet balance is credited immediately.</Text>
+          )}
           <NumberInput label="Amount (TZS)" required min={1} thousandSeparator="," value={topupAmount}
             onChange={(v) => setTopupAmount(typeof v === 'number' ? v : '')} />
           <TextInput label="Reference (optional)" placeholder="e.g. bank slip / transaction ref"
             value={topupReference} onChange={(e) => setTopupReference(e.currentTarget.value)} />
           <Textarea label="Notes (optional)" value={topupNotes} onChange={(e) => setTopupNotes(e.currentTarget.value)} />
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setTopupOpen(false)}>Cancel</Button>
+            <Button variant="default" onClick={() => { setTopupOpen(false); setTopupId(undefined); }}>Cancel</Button>
             <Button color="green" loading={topupMut.isPending} disabled={!topupAmount || Number(topupAmount) <= 0}
               onClick={() => selected && topupMut.mutate(selected.id)}>
               Confirm top-up

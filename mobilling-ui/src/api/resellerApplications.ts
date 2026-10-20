@@ -57,8 +57,16 @@ export interface ResellerWalletTransaction {
   created_at: string;
 }
 
-export const getResellerWallet = (id: string) =>
-  api.get<{ data: { balance: number; ledger: ResellerWalletTransaction[] } }>(`/reseller-applications/${id}/wallet`);
+export interface ResellerWalletPendingTopup {
+  id: string;
+  amount: number;
+  method: 'pesapal' | 'lipa_number';
+  reference: string;
+  created_at: string;
+}
 
-export const topupResellerWallet = (id: string, payload: { amount: number; reference?: string; notes?: string }) =>
+export const getResellerWallet = (id: string) =>
+  api.get<{ data: { balance: number; ledger: ResellerWalletTransaction[]; pending_topups: ResellerWalletPendingTopup[] } }>(`/reseller-applications/${id}/wallet`);
+
+export const topupResellerWallet = (id: string, payload: { amount: number; reference?: string; notes?: string; topup_id?: string }) =>
   api.post<{ data: { balance: number }; message: string }>(`/reseller-applications/${id}/wallet/topup`, payload);
