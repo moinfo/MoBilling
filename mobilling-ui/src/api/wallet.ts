@@ -22,5 +22,11 @@ export const getWallet = () => api.get<{ data: WalletStatus }>('/wallet');
 export const topupWalletPesapal = (amount: number) =>
   api.post<{ data: { topup_id: string; redirect_url: string | null }; message: string }>('/wallet/topup/pesapal', { amount });
 
+export const topupWalletInvoice = (amount: number) =>
+  api.post<{ data: { topup_id: string; reference: string }; message: string }>('/wallet/topup/invoice', { amount });
+
+export const downloadWalletTopupInvoice = (topupId: string) =>
+  api.get(`/wallet/topup/${topupId}/invoice`, { responseType: 'blob' });
+
 export const getWalletTopupStatus = (topupId: string) =>
   api.get<{ data: { status: string; amount: number } }>(`/wallet/topup/${topupId}/status`);

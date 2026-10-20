@@ -29,6 +29,7 @@ class PlatformSetting extends Model
             'platform_bank_account_number',
             'platform_bank_branch',
             'platform_payment_instructions',
+            'platform_lipa_number',
         ])->pluck('value', 'key');
 
         return [
@@ -37,6 +38,7 @@ class PlatformSetting extends Model
             'bank_account_number' => $settings['platform_bank_account_number'] ?? '',
             'bank_branch' => $settings['platform_bank_branch'] ?? '',
             'payment_instructions' => $settings['platform_payment_instructions'] ?? '',
+            'lipa_number' => $settings['platform_lipa_number'] ?? '',
         ];
     }
 }

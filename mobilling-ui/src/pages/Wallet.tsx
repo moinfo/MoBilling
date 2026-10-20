@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Stack, Paper, Title, Text, Group, Badge, Table, Button, NumberInput, Alert } from '@mantine/core';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconWallet, IconInfoCircle } from '@tabler/icons-react';
-import { getWallet, topupWalletPesapal } from '../api/wallet';
+import { IconWallet, IconInfoCircle, IconFileInvoice } from '@tabler/icons-react';
+import { getWallet, topupWalletPesapal, topupWalletInvoice, downloadWalletTopupInvoice } from '../api/wallet';
 import { formatCurrency } from '../utils/formatCurrency';
 
 const TYPE_COLOR: Record<string, string> = { topup: 'green', debit: 'red', refund: 'blue' };
@@ -27,6 +27,28 @@ export default function Wallet() {
     onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not start the top-up.', color: 'red' }),
   });
 
+  const invoiceMut = useMutation({
+    mutationFn: async () => {
+      const res = await topupWalletInvoice(Number(amount));
+      const topupId = res.data.data.topup_id;
+      const pdf = await downloadWalletTopupInvoice(topupId);
+      const url = window.URL.createObjectURL(new Blob([pdf.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${res.data.data.reference}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      return res;
+    },
+    onSuccess: (res) => {
+      notifications.show({ title: 'Invoice generated', message: res.data.message, color: 'green', autoClose: 9000 });
+      refetch();
+    },
+    onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not generate the invoice.', color: 'red' }),
+  });
+
   if (!isLoading && wallet && !wallet.is_wallet_gated) {
     return (
       <Stack gap="lg">
@@ -48,19 +70,33 @@ export default function Wallet() {
           price. If the balance is too low, the order is held until you top up.
         </Text>
 
-        {wallet?.pesapal_configured ? (
-          <Group mt="md" align="flex-end">
-            <NumberInput label="Top up amount" value={amount} onChange={(v) => setAmount(v as number)} min={1000} step={5000} style={{ width: 200 }} />
+        <Group mt="md" align="flex-end">
+          <NumberInput label="Top up amount" value={amount} onChange={(v) => setAmount(v as number)} min={1000} step={5000} style={{ width: 200 }} />
+          {wallet?.pesapal_configured && (
             <Button loading={topupMut.isPending} onClick={() => topupMut.mutate()} leftSection={<IconWallet size={16} />}>
               Top up via Pesapal
             </Button>
-          </Group>
-        ) : (
+          )}
+          <Button
+            variant="light"
+            color="green"
+            loading={invoiceMut.isPending}
+            onClick={() => invoiceMut.mutate()}
+            leftSection={<IconFileInvoice size={16} />}
+          >
+            Pay via Lipa Number
+          </Button>
+        </Group>
+        {!wallet?.pesapal_configured && (
           <Alert icon={<IconInfoCircle size={16} />} color="yellow" mt="md">
-            Online top-up isn't available yet — set up your own Pesapal account in Settings, or contact your provider
-            to top up your wallet.
+            Online top-up isn't available yet — set up your own Pesapal account in Settings, or use "Pay via Lipa
+            Number" below to top up manually.
           </Alert>
         )}
+        <Text size="xs" c="dimmed" mt={4}>
+          "Pay via Lipa Number" downloads an invoice with our Lipa Number and bank details — pay manually and your
+          wallet is credited once we confirm receipt.
+        </Text>
       </Paper>
 
       <Paper withBorder p="md" radius="md">

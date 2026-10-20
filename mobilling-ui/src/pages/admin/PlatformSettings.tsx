@@ -24,6 +24,7 @@ export default function PlatformSettings() {
     platform_bank_account_number: '',
     platform_bank_branch: '',
     platform_payment_instructions: '',
+    platform_lipa_number: '',
   });
 
   const [wifiForm, setWifiForm] = useState({ wifi_commission_percent: '10' });
@@ -47,6 +48,7 @@ export default function PlatformSettings() {
         platform_bank_account_number: settings.platform_bank_account_number || '',
         platform_bank_branch: settings.platform_bank_branch || '',
         platform_payment_instructions: settings.platform_payment_instructions || '',
+        platform_lipa_number: settings.platform_lipa_number || '',
       });
       setWifiForm({ wifi_commission_percent: settings.wifi_commission_percent || '10' });
       setTemplateForm({
@@ -147,7 +149,8 @@ export default function PlatformSettings() {
         <Tabs.Panel value="bank">
           <Paper withBorder p="lg" radius="md" maw={600}>
             <Text size="sm" c="dimmed" mb="md">
-              These bank details will appear on subscription invoices for bank transfer payments.
+              These bank details will appear on subscription invoices and reseller wallet top-up invoices for
+              bank transfer / Lipa Number payments.
             </Text>
 
             <Stack gap="md">
@@ -168,6 +171,12 @@ export default function PlatformSettings() {
                 placeholder="e.g. 0152XXXXXXXX"
                 value={bankForm.platform_bank_account_number}
                 onChange={(e) => setBankForm({ ...bankForm, platform_bank_account_number: e.currentTarget.value })}
+              />
+              <TextInput
+                label="Lipa Number"
+                placeholder="e.g. 123456 (mobile money paybill/lipa namba)"
+                value={bankForm.platform_lipa_number}
+                onChange={(e) => setBankForm({ ...bankForm, platform_lipa_number: e.currentTarget.value })}
               />
               <TextInput
                 label="Branch"

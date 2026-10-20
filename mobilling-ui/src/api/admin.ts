@@ -541,6 +541,7 @@ export interface PlatformSettings {
   platform_bank_account_number: string;
   platform_bank_branch: string;
   platform_payment_instructions: string;
+  platform_lipa_number: string;
   // Email templates
   welcome_email_subject: string;
   welcome_email_body: string;

@@ -293,6 +293,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:credit.manage')->prefix('wallet')->group(function () {
         Route::get('/', [\App\Http\Controllers\TenantWalletController::class, 'show']);
         Route::post('/topup/pesapal', [\App\Http\Controllers\TenantWalletController::class, 'topupPesapal']);
+        Route::post('/topup/invoice', [\App\Http\Controllers\TenantWalletController::class, 'topupInvoice']);
+        Route::get('/topup/{topup}/invoice', [\App\Http\Controllers\TenantWalletController::class, 'downloadInvoice']);
         Route::get('/topup/{topup}/status', [\App\Http\Controllers\TenantWalletController::class, 'topupStatus']);
     });
 

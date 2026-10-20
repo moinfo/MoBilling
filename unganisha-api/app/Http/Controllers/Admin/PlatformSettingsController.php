@@ -35,6 +35,7 @@ class PlatformSettingsController extends Controller
             'platform_bank_account_number' => 'nullable|string|max:255',
             'platform_bank_branch' => 'nullable|string|max:255',
             'platform_payment_instructions' => 'nullable|string|max:1000',
+            'platform_lipa_number' => 'nullable|string|max:255',
             // Email templates
             'welcome_email_subject' => 'nullable|string|max:255',
             'welcome_email_body' => 'nullable|string|max:5000',
@@ -53,6 +54,7 @@ class PlatformSettingsController extends Controller
             'platform_bank_account_number',
             'platform_bank_branch',
             'platform_payment_instructions',
+            'platform_lipa_number',
             // Email templates
             'welcome_email_subject',
             'welcome_email_body',

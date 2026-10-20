@@ -6,6 +6,7 @@ use App\Models\TenantWalletTopup;
 use App\Models\TenantWalletTransaction;
 use App\Services\PesapalService;
 use App\Services\TenantWalletService;
+use App\Services\WalletTopupInvoicePdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -97,6 +98,46 @@ class TenantWalletController extends Controller
 
             return response()->json(['message' => 'Failed to initiate Pesapal payment. Please try again.'], 500);
         }
+    }
+
+    /**
+     * Self-service manual top-up: creates a pending request and hands back an invoice
+     * (PDF) carrying our Lipa Number / bank details + a reference to quote. No online
+     * gateway involved — staff confirm receipt and credit the wallet the same way as
+     * any other "paid outside" top-up (ResellerApplicationController::walletTopup),
+     * once the payment actually lands.
+     */
+    public function topupInvoice(Request $request)
+    {
+        $user = $request->user();
+        $tenant = $user->tenant;
+
+        if (!$tenant->is_wallet_gated) {
+            return response()->json(['message' => 'This tenant does not use the reseller wallet.'], 422);
+        }
+
+        $data = $request->validate(['amount' => 'required|numeric|min:1000']);
+
+        $topup = TenantWalletTopup::withoutGlobalScopes()->create([
+            'tenant_id'    => $tenant->id,
+            'requested_by' => $user->id,
+            'amount'       => $data['amount'],
+            'status'       => 'pending',
+        ]);
+
+        return response()->json([
+            'data'    => ['topup_id' => $topup->id, 'reference' => WalletTopupInvoicePdfService::reference($topup)],
+            'message' => 'Invoice generated. Pay via the Lipa Number on the invoice — your wallet is credited once we confirm payment.',
+        ], 201);
+    }
+
+    public function downloadInvoice(Request $request, TenantWalletTopup $topup)
+    {
+        abort_unless($topup->tenant_id === $request->user()->tenant_id, 404);
+
+        $pdf = app(WalletTopupInvoicePdfService::class)->generate($topup);
+
+        return $pdf->download(WalletTopupInvoicePdfService::reference($topup) . '.pdf');
     }
 
     public function topupStatus(Request $request, TenantWalletTopup $topup)
