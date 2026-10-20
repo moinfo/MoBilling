@@ -30,13 +30,21 @@ class RenewalBundleService
      */
     public function hostingPlanSubscription(HostingAccount $hostingAccount): ?ClientSubscription
     {
+        // NOT status='active' only — a hosting-plan subscription suspended
+        // for non-payment is exactly the one a renewal needs to find (found
+        // live on hdlworld.co.tz: the real "Universal Web Hosting Package"
+        // subscription, TZS 80,500, was suspended, so this query found
+        // nothing and silently fell back to $hostingAccount->subscription —
+        // which here pointed at the Domain Registration instead, so the
+        // actual hosting renewal was never even considered).
         $byDomain = ClientSubscription::withoutGlobalScopes()
             ->whereNull('deleted_at')
             ->where('tenant_id', $hostingAccount->tenant_id)
             ->where('label', $hostingAccount->domain)
-            ->where('status', 'active')
+            ->where('status', '!=', 'cancelled')
             ->whereHas('productService', fn ($q) => $q->where('category', 'Web Hosting'))
             ->with('productService')
+            ->latest('start_date')
             ->first();
 
         return $byDomain ?? $hostingAccount->subscription;
@@ -76,9 +84,16 @@ class RenewalBundleService
      *                             abnormal subscription still needs a human. Staff using
      *                             the manual "Generate Invoice" button retain full
      *                             judgement regardless, so this defaults off.
+     * @param  bool  $includeDomain  False for the client portal's Hosting page, which bills
+     *                               hosting only — domain renewal there has its own dedicated
+     *                               "Renew" action on the portal's Domains page (and its own,
+     *                               TLD-accurate pricing via DomainBillingService, which this
+     *                               generic product-price path does not match). True (default)
+     *                               for staff's "Generate Invoice" and the WhatsApp self-service
+     *                               flow, which intentionally bundle both into one invoice.
      * @return array{candidates: ClientSubscription[], billable: ClientSubscription[]}
      */
-    public function billableSubscriptions(HostingAccount $hostingAccount, bool $selfService = false): array
+    public function billableSubscriptions(HostingAccount $hostingAccount, bool $selfService = false, bool $includeDomain = true): array
     {
         // Deduped by id: when there's no separate active "Web Hosting"
         // subscription for this domain, hostingPlanSubscription() falls back
@@ -90,7 +105,7 @@ class RenewalBundleService
         // produced a TZS 40,000 preview).
         $candidates = collect([
             $this->hostingPlanSubscription($hostingAccount),
-            $this->domainSubscription($hostingAccount),
+            $includeDomain ? $this->domainSubscription($hostingAccount) : null,
         ])->filter()->unique('id')->values()->all();
 
         // Never re-bundle a subscription that already has a real invoice —
@@ -143,12 +158,12 @@ class RenewalBundleService
      * Null when there's genuinely nothing to point at (e.g. the blocking
      * invoice is already paid and activation just hasn't caught up).
      */
-    public function existingUnpaidInvoice(HostingAccount $hostingAccount): ?Document
+    public function existingUnpaidInvoice(HostingAccount $hostingAccount, bool $includeDomain = true): ?Document
     {
-        $candidates = array_values(array_filter([
+        $candidates = collect([
             $this->hostingPlanSubscription($hostingAccount),
-            $this->domainSubscription($hostingAccount),
-        ]));
+            $includeDomain ? $this->domainSubscription($hostingAccount) : null,
+        ])->filter()->unique('id')->values()->all();
         if (empty($candidates)) {
             return null;
         }
@@ -164,9 +179,9 @@ class RenewalBundleService
     }
 
     /** Price preview for a manual "generate invoice" action — computes, doesn't create anything. */
-    public function preview(HostingAccount $hostingAccount, bool $selfService = false): array
+    public function preview(HostingAccount $hostingAccount, bool $selfService = false, bool $includeDomain = true): array
     {
-        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount, $selfService);
+        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount, $selfService, $includeDomain);
         if (empty($candidates)) {
             throw new \RuntimeException('No hosting-plan or domain subscription found for this domain.');
         }
@@ -182,10 +197,10 @@ class RenewalBundleService
         ];
     }
 
-    /** Generates the renewal invoice this domain is missing — bundles the domain renewal in too, if it has one. */
-    public function generate(HostingAccount $hostingAccount, bool $selfService = false): Document
+    /** Generates the renewal invoice this domain is missing — bundles the domain renewal in too, if it has one and $includeDomain is true. */
+    public function generate(HostingAccount $hostingAccount, bool $selfService = false, bool $includeDomain = true): Document
     {
-        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount, $selfService);
+        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount, $selfService, $includeDomain);
         if (empty($candidates)) {
             throw new \RuntimeException('No hosting-plan or domain subscription found for this domain.');
         }

@@ -938,17 +938,21 @@ class PortalHostingController extends Controller
     }
 
     /**
-     * Price preview before the client confirms a renewal — same bundling
-     * (hosting plan + its domain, if any) the staff "Generate Invoice"
-     * action and the WhatsApp self-service flow already use, so the
-     * client sees exactly what they'll be charged before anything is created.
+     * Price preview before the client confirms a renewal — hosting plan
+     * only. Domain renewal has its own dedicated "Renew" action on the
+     * portal's Domains page (with its own TLD-accurate pricing), so this
+     * does NOT bundle the domain in the way the staff "Generate Invoice"
+     * action and the WhatsApp self-service flow do — bundling it here would
+     * price the domain off the generic product price instead of the real
+     * per-TLD renewal price (found live: TZS 20,000 shown instead of the
+     * correct TZS 19,999 for a .co.tz).
      */
     public function renewPreview(Request $request, HostingAccount $hostingAccount, \App\Services\Hosting\RenewalBundleService $bundler)
     {
         $this->guardAccount($request, $hostingAccount, adminOnly: false);
 
         try {
-            $preview = $bundler->preview($hostingAccount, selfService: true);
+            $preview = $bundler->preview($hostingAccount, selfService: true, includeDomain: false);
         } catch (\RuntimeException $e) {
             return $this->renewBlockedResponse($hostingAccount, $bundler, $e);
         }
@@ -963,7 +967,7 @@ class PortalHostingController extends Controller
      */
     private function renewBlockedResponse(HostingAccount $hostingAccount, \App\Services\Hosting\RenewalBundleService $bundler, \RuntimeException $e)
     {
-        $existing = $bundler->existingUnpaidInvoice($hostingAccount);
+        $existing = $bundler->existingUnpaidInvoice($hostingAccount, includeDomain: false);
 
         return response()->json([
             'message' => $e->getMessage(),
@@ -975,13 +979,13 @@ class PortalHostingController extends Controller
         ], 422);
     }
 
-    /** Client-initiated renewal: creates the (hosting + domain, if any) invoice; activation/registry renewal fire on payment. */
+    /** Client-initiated renewal: hosting plan only (see renewPreview() above for why domain isn't bundled here). */
     public function renew(Request $request, HostingAccount $hostingAccount, \App\Services\Hosting\RenewalBundleService $bundler)
     {
         $this->guardAccount($request, $hostingAccount, adminOnly: false);
 
         try {
-            $document = $bundler->generate($hostingAccount, selfService: true);
+            $document = $bundler->generate($hostingAccount, selfService: true, includeDomain: false);
         } catch (\RuntimeException $e) {
             return $this->renewBlockedResponse($hostingAccount, $bundler, $e);
         }
