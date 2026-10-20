@@ -66,20 +66,32 @@ class RenewalBundleService
     }
 
     /**
-     * @param  bool  $selfService  Extra caution for the unattended WhatsApp self-service
-     *                             flow: excludes anything not currently 'active'/'expired'
-     *                             (e.g. 'suspended', which needs a human's judgement on
-     *                             whether it's genuinely due or was suspended for some
-     *                             other reason) — staff using the manual "Generate Invoice"
-     *                             button retain full judgement, so this defaults off.
+     * @param  bool  $selfService  Extra caution for unattended flows (WhatsApp bot, client
+     *                             portal): excludes anything in a status other than
+     *                             'active'/'expired'/'suspended' — this does NOT exclude
+     *                             'suspended' itself, since ClientSubscription.status only
+     *                             ever becomes 'suspended' via SuspendUnpaidSubscriptions
+     *                             (unpaid, past grace period), which is exactly what
+     *                             self-service renewal is for. A cancelled or otherwise
+     *                             abnormal subscription still needs a human. Staff using
+     *                             the manual "Generate Invoice" button retain full
+     *                             judgement regardless, so this defaults off.
      * @return array{candidates: ClientSubscription[], billable: ClientSubscription[]}
      */
     public function billableSubscriptions(HostingAccount $hostingAccount, bool $selfService = false): array
     {
-        $candidates = array_values(array_filter([
+        // Deduped by id: when there's no separate active "Web Hosting"
+        // subscription for this domain, hostingPlanSubscription() falls back
+        // to the account's direct relation — which can be the SAME row
+        // domainSubscription() also finds (e.g. a domain-only hosting account
+        // whose stored subscription is the Domain Registration itself). Without
+        // this, that one subscription would be billed twice in the same invoice
+        // (found live on hdlworld.co.tz: a single TZS 20,000 subscription
+        // produced a TZS 40,000 preview).
+        $candidates = collect([
             $this->hostingPlanSubscription($hostingAccount),
             $this->domainSubscription($hostingAccount),
-        ]));
+        ])->filter()->unique('id')->values()->all();
 
         // Never re-bundle a subscription that already has a real invoice —
         // hosting and domain are invoiced independently, so one having a
@@ -91,11 +103,19 @@ class RenewalBundleService
         // which meant a domain paid a year in advance could be billed again
         // immediately just for lacking a currently-open invoice. Found live: several
         // real clients' domains 9-12 months from expiry were showing as "billable").
+        // ClientSubscription.status only ever becomes 'suspended' via
+        // SuspendUnpaidSubscriptions (unpaid past the grace period) — unlike
+        // HostingAccount::suspensionReason(), which also covers bandwidth/ToS
+        // suspensions at the cPanel level, a *subscription* suspension is
+        // always billing-caused. That's exactly what self-service renewal
+        // exists to let the client fix themselves; excluding it here would
+        // turn "Renew" into a dead end for the single most common reason a
+        // client reaches for it.
         $billable = array_values(array_filter(
             $candidates,
             fn ($sub) => !$this->hasCurrentInvoice($sub)
                 && $this->isDueSoon($sub)
-                && (!$selfService || in_array($sub->status, ['active', 'expired'], true))
+                && (!$selfService || in_array($sub->status, ['active', 'expired', 'suspended'], true))
         ));
 
         return compact('candidates', 'billable');
