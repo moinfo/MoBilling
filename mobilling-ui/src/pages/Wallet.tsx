@@ -1,12 +1,24 @@
 import { useState } from 'react';
-import { Stack, Paper, Title, Text, Group, Badge, Table, Button, NumberInput, Alert } from '@mantine/core';
+import { Stack, Paper, Title, Text, Group, Badge, Table, Button, NumberInput, Alert, ActionIcon, Tooltip } from '@mantine/core';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconWallet, IconInfoCircle, IconFileInvoice } from '@tabler/icons-react';
+import { IconWallet, IconInfoCircle, IconFileInvoice, IconDownload } from '@tabler/icons-react';
 import { getWallet, topupWalletPesapal, topupWalletInvoice, downloadWalletTopupInvoice } from '../api/wallet';
 import { formatCurrency } from '../utils/formatCurrency';
 
 const TYPE_COLOR: Record<string, string> = { topup: 'green', debit: 'red', refund: 'blue' };
+
+async function downloadInvoiceBlob(topupId: string, filename: string) {
+  const pdf = await downloadWalletTopupInvoice(topupId);
+  const url = window.URL.createObjectURL(new Blob([pdf.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `${filename}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
 
 /** A white-label reseller tenant's own prepaid wallet — balance, ledger, top up. */
 export default function Wallet() {
@@ -30,16 +42,7 @@ export default function Wallet() {
   const invoiceMut = useMutation({
     mutationFn: async () => {
       const res = await topupWalletInvoice(Number(amount));
-      const topupId = res.data.data.topup_id;
-      const pdf = await downloadWalletTopupInvoice(topupId);
-      const url = window.URL.createObjectURL(new Blob([pdf.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${res.data.data.reference}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadInvoiceBlob(res.data.data.topup_id, res.data.data.reference);
       return res;
     },
     onSuccess: (res) => {
@@ -98,6 +101,44 @@ export default function Wallet() {
           wallet is credited once we confirm receipt.
         </Text>
       </Paper>
+
+      {!!wallet?.pending_topups?.length && (
+        <Paper withBorder p="md" radius="md">
+          <Title order={5} mb="sm">Pending top-ups</Title>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Method</Table.Th>
+                <Table.Th>Reference</Table.Th>
+                <Table.Th>Amount</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th></Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {wallet.pending_topups.map((t) => (
+                <Table.Tr key={t.id}>
+                  <Table.Td>{new Date(t.created_at).toLocaleString()}</Table.Td>
+                  <Table.Td>{t.method === 'lipa_number' ? 'Lipa Number' : 'Pesapal'}</Table.Td>
+                  <Table.Td>{t.reference}</Table.Td>
+                  <Table.Td>{formatCurrency(t.amount)}</Table.Td>
+                  <Table.Td><Badge size="sm" color="yellow" variant="light">Pending confirmation</Badge></Table.Td>
+                  <Table.Td>
+                    {t.method === 'lipa_number' && (
+                      <Tooltip label="Download invoice again">
+                        <ActionIcon variant="subtle" onClick={() => downloadInvoiceBlob(t.id, t.reference)}>
+                          <IconDownload size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Paper>
+      )}
 
       <Paper withBorder p="md" radius="md">
         <Title order={5} mb="sm">Recent activity</Title>

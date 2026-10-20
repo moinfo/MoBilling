@@ -30,6 +30,23 @@ class TenantWalletController extends Controller
             ->where('tenant_id', $tenant->id)
             ->latest('created_at')->limit(50)->get();
 
+        // Still-pending top-up requests (Pesapal not yet paid, or a Lipa Number
+        // invoice awaiting staff confirmation) — these have no ledger row yet
+        // (that's only written once the money actually lands), so without this
+        // a client-generated invoice would be invisible on the wallet page
+        // until someone confirms it days later.
+        $pendingTopups = TenantWalletTopup::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('status', 'pending')
+            ->latest('created_at')->limit(20)->get()
+            ->map(fn (TenantWalletTopup $t) => [
+                'id'         => $t->id,
+                'amount'     => (float) $t->amount,
+                'method'     => $t->order_tracking_id ? 'pesapal' : 'lipa_number',
+                'reference'  => WalletTopupInvoicePdfService::reference($t),
+                'created_at' => $t->created_at,
+            ]);
+
         return response()->json(['data' => [
             'balance'            => (float) $tenant->wallet_balance,
             'is_wallet_gated'    => (bool) $tenant->is_wallet_gated,
@@ -38,6 +55,7 @@ class TenantWalletController extends Controller
             // for the tenant's OWN clients paying the tenant, a different thing).
             'pesapal_configured' => (bool) (config('pesapal.consumer_key') && config('pesapal.consumer_secret')),
             'ledger'             => $ledger,
+            'pending_topups'     => $pendingTopups,
         ]]);
     }
 

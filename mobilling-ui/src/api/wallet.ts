@@ -10,11 +10,20 @@ export interface WalletLedgerRow {
   created_at: string;
 }
 
+export interface WalletPendingTopup {
+  id: string;
+  amount: number;
+  method: 'pesapal' | 'lipa_number';
+  reference: string;
+  created_at: string;
+}
+
 export interface WalletStatus {
   balance: number;
   is_wallet_gated: boolean;
   pesapal_configured: boolean;
   ledger: WalletLedgerRow[];
+  pending_topups: WalletPendingTopup[];
 }
 
 export const getWallet = () => api.get<{ data: WalletStatus }>('/wallet');
