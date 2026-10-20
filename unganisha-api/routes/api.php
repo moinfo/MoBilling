@@ -1261,6 +1261,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/hosting/{hostingAccount}/request-cancellation', [\App\Http\Controllers\Portal\PortalHostingController::class, 'requestCancellation']);
     Route::get('/hosting/{hostingAccount}/upgrade-options', [\App\Http\Controllers\Portal\PortalHostingController::class, 'upgradeOptions']);
     Route::post('/hosting/{hostingAccount}/upgrade', [\App\Http\Controllers\Portal\PortalHostingController::class, 'upgrade']);
+    Route::get('/hosting/{hostingAccount}/renew-preview', [\App\Http\Controllers\Portal\PortalHostingController::class, 'renewPreview']);
+    Route::post('/hosting/{hostingAccount}/renew', [\App\Http\Controllers\Portal\PortalHostingController::class, 'renew']);
     Route::get('/domains', [\App\Http\Controllers\Portal\PortalDomainController::class, 'index']);
     Route::get('/domains/check', [\App\Http\Controllers\Portal\PortalDomainController::class, 'check']);
     Route::get('/domains/suggest', [\App\Http\Controllers\Portal\PortalDomainController::class, 'suggest'])->middleware('throttle:60,1,portal-domain-suggest');

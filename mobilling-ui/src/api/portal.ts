@@ -206,6 +206,26 @@ export const subscribePortalHostingBackup = (id: string) =>
 export const portalHostingSso = (id: string, opts?: { service?: 'cpanel' | 'webmail'; goto?: string }) =>
   api.post<{ url: string }>(`/portal/hosting/${id}/sso`, opts ?? {});
 
+export interface PortalHostingRenewPreview {
+  product_name: string;
+  client_name: string | null;
+  line_items: Array<{ description: string; quantity: number; price: number; total: number; service_from: string; service_to: string }>;
+  subtotal: number;
+  tax_amount: number;
+  discount_amount: number;
+  total: number;
+  due_date: string;
+}
+
+// Bundles the hosting plan and its domain (if any) into one renewal
+// invoice — same logic the staff "Generate Invoice" button and the
+// WhatsApp self-service flow already use (RenewalBundleService).
+export const getPortalHostingRenewPreview = (id: string) =>
+  api.get<{ data: PortalHostingRenewPreview }>(`/portal/hosting/${id}/renew-preview`);
+
+export const portalRenewHosting = (id: string) =>
+  api.post<{ data: { document_id: string; document_number: string; total: number }; message: string }>(`/portal/hosting/${id}/renew`);
+
 export interface PortalHostingDetail {
   id: string;
   domain: string;

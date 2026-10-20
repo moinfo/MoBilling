@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import {
-  Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Text, Group, Code, Tooltip,
+  Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Text, Group, Code, Tooltip, Modal, Divider, Loader, Center,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { IconExternalLink, IconWorld, IconShieldCheck, IconShieldOff, IconClockHour4 } from '@tabler/icons-react';
-import { getPortalHosting, portalHostingSso, subscribePortalHostingBackup, PortalHostingAccount } from '../../api/portal';
+import { IconExternalLink, IconWorld, IconShieldCheck, IconShieldOff, IconClockHour4, IconRefresh } from '@tabler/icons-react';
+import {
+  getPortalHosting, portalHostingSso, subscribePortalHostingBackup, PortalHostingAccount,
+  getPortalHostingRenewPreview, portalRenewHosting,
+} from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
 const fmtDate = (d: string | null) =>
@@ -21,6 +24,7 @@ export default function PortalHosting() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [renewFor, setRenewFor] = useState<PortalHostingAccount | null>(null);
   const isPortalAdmin = (user as any)?.role === 'admin';
 
   const { data, isLoading } = useQuery({
@@ -132,14 +136,23 @@ export default function PortalHosting() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      {isPortalAdmin && a.status === 'active' && (
-                        <Button size="xs" variant="light"
-                          leftSection={<IconExternalLink size={13} />}
-                          loading={openingId === a.id}
-                          onClick={(e) => { e.stopPropagation(); openCpanel(a.id); }}>
-                          Login to cPanel
-                        </Button>
-                      )}
+                      <Group gap="xs" wrap="nowrap">
+                        {isPortalAdmin && a.status === 'active' && (
+                          <Button size="xs" variant="light"
+                            leftSection={<IconExternalLink size={13} />}
+                            loading={openingId === a.id}
+                            onClick={(e) => { e.stopPropagation(); openCpanel(a.id); }}>
+                            Login to cPanel
+                          </Button>
+                        )}
+                        {(a.status === 'active' || a.status === 'suspended') && (
+                          <Button size="xs" variant="light" color="teal"
+                            leftSection={<IconRefresh size={13} />}
+                            onClick={(e) => { e.stopPropagation(); setRenewFor(a); }}>
+                            Renew
+                          </Button>
+                        )}
+                      </Group>
                       {a.status === 'suspended' && (
                         <Text size="xs" c="orange">
                           {a.suspension_reason === 'bandwidth'
@@ -157,6 +170,72 @@ export default function PortalHosting() {
           </Table.ScrollContainer>
         )}
       </Paper>
+
+      <RenewHostingModal account={renewFor} onClose={() => setRenewFor(null)} />
     </Stack>
+  );
+}
+
+function RenewHostingModal({ account, onClose }: { account: PortalHostingAccount | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['portal-hosting-renew-preview', account?.id],
+    queryFn: () => getPortalHostingRenewPreview(account!.id),
+    enabled: !!account,
+  });
+  const preview = data?.data?.data;
+
+  const renewMutation = useMutation({
+    mutationFn: () => portalRenewHosting(account!.id),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-hosting'] });
+      notifications.show({ title: 'Renewal invoice created', message: res.data.message, color: 'green', autoClose: 8000 });
+      onClose();
+      navigate(`/portal/invoices/${res.data.data.document_id}`);
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Renewal failed — please contact us.', color: 'red',
+    }),
+  });
+
+  return (
+    <Modal opened={!!account} onClose={onClose} title={`Renew ${account?.domain ?? ''}`} centered>
+      <Stack>
+        {isLoading && <Center py="md"><Loader size="sm" /></Center>}
+        {isError && (
+          <Text size="sm" c="red">
+            {(error as any)?.response?.data?.message ?? 'Nothing to renew right now — everything is already invoiced or not yet due.'}
+          </Text>
+        )}
+        {preview && (
+          <>
+            <Text size="sm" c="dimmed">{preview.product_name}</Text>
+            {preview.line_items.map((li, i) => (
+              <Group key={i} justify="space-between">
+                <Text size="sm">{li.description}</Text>
+                <Text size="sm">TZS {li.total.toLocaleString()}</Text>
+              </Group>
+            ))}
+            <Divider />
+            <Group justify="space-between">
+              <Text fw={600}>Total</Text>
+              <Text fw={600}>TZS {preview.total.toLocaleString()}</Text>
+            </Group>
+            <Text size="xs" c="dimmed">
+              An invoice is created now — this service renews automatically the moment it is paid.
+            </Text>
+          </>
+        )}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button color="green" loading={renewMutation.isPending} disabled={!preview}
+            onClick={() => renewMutation.mutate()}>
+            Create Invoice & Pay
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }

@@ -936,4 +936,49 @@ class PortalHostingController extends Controller
             'message' => "Cancellation request submitted as ticket {$ticket->ticket_number} — our team will confirm shortly.",
         ], 201);
     }
+
+    /**
+     * Price preview before the client confirms a renewal — same bundling
+     * (hosting plan + its domain, if any) the staff "Generate Invoice"
+     * action and the WhatsApp self-service flow already use, so the
+     * client sees exactly what they'll be charged before anything is created.
+     */
+    public function renewPreview(Request $request, HostingAccount $hostingAccount, \App\Services\Hosting\RenewalBundleService $bundler)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $preview = $bundler->preview($hostingAccount, selfService: true);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $preview]);
+    }
+
+    /** Client-initiated renewal: creates the (hosting + domain, if any) invoice; activation/registry renewal fire on payment. */
+    public function renew(Request $request, HostingAccount $hostingAccount, \App\Services\Hosting\RenewalBundleService $bundler)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $document = $bundler->generate($hostingAccount, selfService: true);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        try {
+            $document->loadMissing('client');
+            if ($document->client && ($document->client->phone || $document->client->email)) {
+                $document->client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return response()->json([
+            'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+            'message' => "Renewal invoice {$document->document_number} created — pay it to renew instantly.",
+        ], 201);
+    }
 }
