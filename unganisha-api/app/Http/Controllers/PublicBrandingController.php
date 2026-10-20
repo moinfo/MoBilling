@@ -33,13 +33,15 @@ class PublicBrandingController extends Controller
         // hosting company shows on their own homepage. Never another
         // tenant's data (host-resolved, see above).
         return response()->json([
-            'branded'  => true,
-            'name'     => $tenant->name,
-            'logo_url' => $tenant->logo_url,
-            'website'  => $tenant->website,
-            'email'    => $tenant->email,
-            'phone'    => $tenant->phone,
-            'address'  => $tenant->address,
+            'branded'         => true,
+            'name'            => $tenant->name,
+            'logo_url'        => $tenant->logo_url,
+            'website'         => $tenant->website,
+            'email'           => $tenant->email,
+            'phone'           => $tenant->phone,
+            'address'         => $tenant->address,
+            'font_family'     => $tenant->brand_font,
+            'font_size'       => $tenant->brand_font_size,
         ]);
     }
 }

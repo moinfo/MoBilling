@@ -14,7 +14,19 @@ export interface Branding {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  font_family?: string | null;
+  font_size?: string | null;
 }
+
+// Fixed allow-list — must match SettingsController's brand_font validation
+// and the fonts actually bundled in main.tsx. Never pass a raw string
+// through to a style/CSS context (this one included).
+const FONT_STACKS: Record<string, string> = {
+  space_grotesk: '"Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif',
+  archivo: '"Archivo", -apple-system, BlinkMacSystemFont, sans-serif',
+  instrument_sans: '"Instrument Sans", -apple-system, BlinkMacSystemFont, sans-serif',
+};
+const FONT_SIZES: Record<string, string> = { sm: '93.75%', md: '100%', lg: '106.25%' };
 
 const DEFAULT_HOSTS = ['mobilling.co.tz', 'www.mobilling.co.tz', 'localhost', '127.0.0.1'];
 const CACHE_KEY = 'wl_branding_v1';
@@ -80,6 +92,25 @@ function applyFavicon(b: Branding) {
   link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+/**
+ * Overrides Mantine's font CSS variables and the root font-size on a branded
+ * host. Looked up through the fixed FONT_STACKS/FONT_SIZES maps above — never
+ * writes the raw `font_family`/`font_size` string into a style context.
+ */
+function applyFont(b: Branding) {
+  if (!b.branded) return;
+  const root = document.documentElement;
+
+  const stack = b.font_family ? FONT_STACKS[b.font_family] : null;
+  if (stack) {
+    root.style.setProperty('--mantine-font-family', stack);
+    root.style.setProperty('--mantine-font-family-headings', stack);
+  }
+
+  const size = b.font_size ? FONT_SIZES[b.font_size] : null;
+  if (size) root.style.fontSize = size;
+}
+
 export function useBranding(): Branding {
   // Seed synchronously from a fresh cache so a branded portal never flashes
   // the default MoBilling brand on navigation.
@@ -92,6 +123,7 @@ export function useBranding(): Branding {
       setBranding(b);
       if (b.branded && b.name) document.title = `${b.name} — Client Area`;
       applyFavicon(b);
+      applyFont(b);
     });
     return () => { alive = false; };
   }, []);
@@ -99,7 +131,7 @@ export function useBranding(): Branding {
   return branding;
 }
 
-/** Brands the tab title and favicon on every page of a white-label host, not just the client portal. */
+/** Brands the tab title, favicon and font on every page of a white-label host, not just the client portal. */
 export function useAppBrandingHead() {
   useEffect(() => {
     let alive = true;
@@ -107,6 +139,7 @@ export function useAppBrandingHead() {
       if (!alive || !b.branded) return;
       if (b.name) document.title = b.name;
       applyFavicon(b);
+      applyFont(b);
     });
     return () => { alive = false; };
   }, []);

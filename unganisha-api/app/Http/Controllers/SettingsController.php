@@ -46,6 +46,11 @@ class SettingsController extends Controller
             'bank_account_number'  => 'nullable|string|max:100',
             'bank_branch'          => 'nullable|string|max:255',
             'payment_instructions' => 'nullable|string|max:2000',
+            // Fixed allow-list, never free text — this flows straight into a CSS custom
+            // property on the client portal (see branding.ts), so an arbitrary string here
+            // would be a CSS/style-tag injection vector.
+            'brand_font'           => ['nullable', \Illuminate\Validation\Rule::in(['space_grotesk', 'archivo', 'instrument_sans'])],
+            'brand_font_size'      => ['nullable', \Illuminate\Validation\Rule::in(['sm', 'md', 'lg'])],
         ]);
 
         if (array_key_exists('custom_domain', $validated)) {

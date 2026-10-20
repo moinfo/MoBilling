@@ -27,6 +27,8 @@ export interface User {
     bank_account_number: string | null;
     bank_branch: string | null;
     payment_instructions: string | null;
+    brand_font: string | null;
+    brand_font_size: string | null;
     late_fee_enabled: boolean;
     late_fee_percent: number;
     late_fee_days: number;

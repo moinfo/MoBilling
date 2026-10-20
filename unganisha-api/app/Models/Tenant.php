@@ -25,7 +25,7 @@ class Tenant extends Model
         'smtp_password', 'smtp_encryption', 'smtp_from_email', 'smtp_from_name',
         'sms_enabled', 'gateway_email', 'gateway_username', 'sender_id', 'sms_authorization',
         // Branding
-        'website', 'logo_path', 'custom_domain',
+        'website', 'logo_path', 'custom_domain', 'brand_font', 'brand_font_size',
         'bank_name', 'bank_account_name', 'bank_account_number', 'bank_branch',
         'payment_instructions', 'payment_methods',
         // Pesapal integration

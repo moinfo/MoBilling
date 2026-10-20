@@ -15,6 +15,8 @@ export interface CompanyData {
   bank_account_number?: string | null;
   bank_branch?: string | null;
   payment_instructions?: string | null;
+  brand_font?: string | null;
+  brand_font_size?: string | null;
 }
 
 export interface ProfileData {

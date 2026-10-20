@@ -236,6 +236,8 @@ function CompanyTab({ user, isAdmin, refreshUser }: {
       bank_account_number: user?.tenant?.bank_account_number || '',
       bank_branch: user?.tenant?.bank_branch || '',
       payment_instructions: user?.tenant?.payment_instructions || '',
+      brand_font: user?.tenant?.brand_font || '',
+      brand_font_size: user?.tenant?.brand_font_size || '',
     },
     validate: {
       name: (v) => (v.trim() ? null : 'Company name is required'),
@@ -318,6 +320,32 @@ function CompanyTab({ user, isAdmin, refreshUser }: {
             disabled={!isAdmin}
             {...form.getInputProps('custom_domain')}
           />
+          <Group grow>
+            <Select
+              label="Portal Font"
+              placeholder="Default"
+              clearable
+              disabled={!isAdmin}
+              data={[
+                { value: 'space_grotesk', label: 'Space Grotesk (default)' },
+                { value: 'archivo', label: 'Archivo' },
+                { value: 'instrument_sans', label: 'Instrument Sans' },
+              ]}
+              {...form.getInputProps('brand_font')}
+            />
+            <Select
+              label="Portal Font Size"
+              placeholder="Default"
+              clearable
+              disabled={!isAdmin}
+              data={[
+                { value: 'sm', label: 'Small' },
+                { value: 'md', label: 'Medium (default)' },
+                { value: 'lg', label: 'Large' },
+              ]}
+              {...form.getInputProps('brand_font_size')}
+            />
+          </Group>
           <Textarea label="Address" autosize minRows={2} disabled={!isAdmin} {...form.getInputProps('address')} />
           <TextInput label="KRA PIN / Tax ID" disabled={!isAdmin} {...form.getInputProps('tax_id')} />
           <Select label="Currency" required data={currencyOptions} searchable disabled={!isAdmin} {...form.getInputProps('currency')} />
