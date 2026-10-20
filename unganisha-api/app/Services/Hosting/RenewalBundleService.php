@@ -116,6 +116,33 @@ class RenewalBundleService
             ->exists();
     }
 
+    /**
+     * The still-unpaid invoice that's blocking a fresh renewal (the
+     * "everything already has a current invoice" case) — so the caller
+     * can hand the client a way to pay THAT invoice instead of a dead end.
+     * Null when there's genuinely nothing to point at (e.g. the blocking
+     * invoice is already paid and activation just hasn't caught up).
+     */
+    public function existingUnpaidInvoice(HostingAccount $hostingAccount): ?Document
+    {
+        $candidates = array_values(array_filter([
+            $this->hostingPlanSubscription($hostingAccount),
+            $this->domainSubscription($hostingAccount),
+        ]));
+        if (empty($candidates)) {
+            return null;
+        }
+
+        $log = RecurringInvoiceLog::withoutGlobalScopes()
+            ->whereIn('client_subscription_id', array_map(fn ($s) => $s->id, $candidates))
+            ->whereHas('document', fn ($q) => $q->whereIn('status', ['sent', 'overdue', 'partial']))
+            ->with('document')
+            ->latest('invoice_created_at')
+            ->first();
+
+        return $log?->document;
+    }
+
     /** Price preview for a manual "generate invoice" action — computes, doesn't create anything. */
     public function preview(HostingAccount $hostingAccount, bool $selfService = false): array
     {

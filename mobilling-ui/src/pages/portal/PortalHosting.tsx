@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { IconExternalLink, IconWorld, IconShieldCheck, IconShieldOff, IconClockHour4, IconRefresh } from '@tabler/icons-react';
 import {
   getPortalHosting, portalHostingSso, subscribePortalHostingBackup, PortalHostingAccount,
-  getPortalHostingRenewPreview, portalRenewHosting,
+  getPortalHostingRenewPreview, portalRenewHosting, PortalHostingRenewBlockedError,
 } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
@@ -204,11 +204,23 @@ function RenewHostingModal({ account, onClose }: { account: PortalHostingAccount
     <Modal opened={!!account} onClose={onClose} title={`Renew ${account?.domain ?? ''}`} centered>
       <Stack>
         {isLoading && <Center py="md"><Loader size="sm" /></Center>}
-        {isError && (
-          <Text size="sm" c="red">
-            {(error as any)?.response?.data?.message ?? 'Nothing to renew right now — everything is already invoiced or not yet due.'}
-          </Text>
-        )}
+        {isError && (() => {
+          const data: PortalHostingRenewBlockedError | undefined = (error as any)?.response?.data;
+          const existing = data?.existing_invoice;
+          return (
+            <>
+              <Text size="sm" c="red">
+                {data?.message ?? 'Nothing to renew right now — everything is already invoiced or not yet due.'}
+              </Text>
+              {existing && (
+                <Button fullWidth color="orange" variant="light"
+                  onClick={() => { onClose(); navigate(`/portal/invoices/${existing.document_id}`); }}>
+                  Pay invoice {existing.document_number} — TZS {existing.total.toLocaleString()}
+                </Button>
+              )}
+            </>
+          );
+        })()}
         {preview && (
           <>
             <Text size="sm" c="dimmed">{preview.product_name}</Text>

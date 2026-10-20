@@ -950,10 +950,29 @@ class PortalHostingController extends Controller
         try {
             $preview = $bundler->preview($hostingAccount, selfService: true);
         } catch (\RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return $this->renewBlockedResponse($hostingAccount, $bundler, $e);
         }
 
         return response()->json(['data' => $preview]);
+    }
+
+    /**
+     * Nothing left to bill doesn't mean nothing to pay — there's usually
+     * an existing unpaid invoice sitting there instead. Surface it so the
+     * client gets a way to pay it rather than a dead-end error.
+     */
+    private function renewBlockedResponse(HostingAccount $hostingAccount, \App\Services\Hosting\RenewalBundleService $bundler, \RuntimeException $e)
+    {
+        $existing = $bundler->existingUnpaidInvoice($hostingAccount);
+
+        return response()->json([
+            'message' => $e->getMessage(),
+            'existing_invoice' => $existing ? [
+                'document_id' => $existing->id,
+                'document_number' => $existing->document_number,
+                'total' => (float) $existing->total,
+            ] : null,
+        ], 422);
     }
 
     /** Client-initiated renewal: creates the (hosting + domain, if any) invoice; activation/registry renewal fire on payment. */
@@ -964,7 +983,7 @@ class PortalHostingController extends Controller
         try {
             $document = $bundler->generate($hostingAccount, selfService: true);
         } catch (\RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return $this->renewBlockedResponse($hostingAccount, $bundler, $e);
         }
 
         try {

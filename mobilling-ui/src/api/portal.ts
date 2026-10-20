@@ -220,6 +220,11 @@ export interface PortalHostingRenewPreview {
 // Bundles the hosting plan and its domain (if any) into one renewal
 // invoice — same logic the staff "Generate Invoice" button and the
 // WhatsApp self-service flow already use (RenewalBundleService).
+export interface PortalHostingRenewBlockedError {
+  message: string;
+  existing_invoice: { document_id: string; document_number: string; total: number } | null;
+}
+
 export const getPortalHostingRenewPreview = (id: string) =>
   api.get<{ data: PortalHostingRenewPreview }>(`/portal/hosting/${id}/renew-preview`);
 
