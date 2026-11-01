@@ -1187,6 +1187,11 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/salary-advances/{salaryAdvance}',  [\App\Http\Controllers\SalaryAdvanceController::class, 'show']);
     Route::post('/salary-advances/{salaryAdvance}/cancel', [\App\Http\Controllers\SalaryAdvanceController::class, 'cancel']);
 
+    Route::get('/commissions',                 [\App\Http\Controllers\CommissionController::class, 'index']);
+    Route::post('/commissions',                [\App\Http\Controllers\CommissionController::class, 'store']);
+    Route::get('/commissions/{commission}',    [\App\Http\Controllers\CommissionController::class, 'show']);
+    Route::post('/commissions/{commission}/cancel', [\App\Http\Controllers\CommissionController::class, 'cancel']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/portal-users', [ClientPortalUserController::class, 'indexAll']);

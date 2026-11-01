@@ -79,6 +79,8 @@ export interface Payslip {
   basic_salary: number;
   allowances_total: number;
   allowances_breakdown: { name: string; amount: number }[];
+  commissions_total: number;
+  commissions_breakdown: { name: string; amount: number }[];
   gross_pay: number;
   statutory_employee_total: number;
   statutory_employee_breakdown: { name: string; amount: number }[];
@@ -236,3 +238,20 @@ export const getSalaryAdvances = (userId?: string) => api.get<{ data: SalaryAdva
 export const createSalaryAdvance = (data: { user_id: string; amount: number; issued_date: string; recovery_month_key: string; notes?: string }) =>
   api.post<{ data: SalaryAdvance }>('/salary-advances', data);
 export const cancelSalaryAdvance = (id: string) => api.post<{ data: SalaryAdvance }>(`/salary-advances/${id}/cancel`);
+
+// Commissions — ad-hoc amount paid out through a designated payroll month, added to that month's gross pay.
+export interface Commission {
+  id: string;
+  user_id: string;
+  amount: number;
+  earned_date: string;
+  payout_month_key: string;
+  status: 'pending' | 'paid' | 'cancelled';
+  notes: string | null;
+  user?: { id: string; name: string };
+}
+
+export const getCommissions = (userId?: string) => api.get<{ data: Commission[] }>('/commissions', { params: { user_id: userId } });
+export const createCommission = (data: { user_id: string; amount: number; earned_date: string; payout_month_key: string; notes?: string }) =>
+  api.post<{ data: Commission }>('/commissions', data);
+export const cancelCommission = (id: string) => api.post<{ data: Commission }>(`/commissions/${id}/cancel`);

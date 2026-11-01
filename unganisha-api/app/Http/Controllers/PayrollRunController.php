@@ -210,6 +210,10 @@ class PayrollRunController extends Controller
                 foreach ($calculator->resolveAdvanceRecoveries($payslip->user, $payrollRun->month_key) as $ar) {
                     $ar['advance']->update(['status' => 'recovered']);
                 }
+
+                foreach ($calculator->resolveCommissions($payslip->user, $payrollRun->month_key) as $c) {
+                    $c['commission']->update(['status' => 'paid']);
+                }
             }
         });
 

@@ -25,8 +25,9 @@ import {
   getMyPayslips, downloadMyPayslipPdf,
   getLoans, createLoan, getLoanPayments, cancelLoan,
   getSalaryAdvances, createSalaryAdvance, cancelSalaryAdvance,
+  getCommissions, createCommission, cancelCommission,
   getPayslipDeductionItems, recomputePayslip,
-  PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance, Payslip,
+  PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance, Commission, Payslip,
 } from '../api/payroll';
 import { waiveAttendancePenalty, unwaiveAttendancePenalty, bulkWaiveAttendancePenalties } from '../api/attendance';
 import { waivePenalty as waiveReportPenalty, unwaivePenalty as unwaiveReportPenalty, bulkWaivePenalties as bulkWaiveReportPenalties } from '../api/staffReports';
@@ -73,6 +74,7 @@ export default function Payroll() {
           {canManage && <Tabs.Tab value="salaries">Salaries</Tabs.Tab>}
           {canManage && <Tabs.Tab value="allowances">Allowances</Tabs.Tab>}
           {canManage && <Tabs.Tab value="deductions">Deductions</Tabs.Tab>}
+          {canManage && <Tabs.Tab value="commissions">Commissions</Tabs.Tab>}
           {canManage && <Tabs.Tab value="statutory">Statutory Rates</Tabs.Tab>}
           {canManage && <Tabs.Tab value="loans">Loans & Advances</Tabs.Tab>}
           {canManage && <Tabs.Tab value="settings">Settings</Tabs.Tab>}
@@ -83,6 +85,7 @@ export default function Payroll() {
         {canManage && <Tabs.Panel value="salaries" pt="md"><SalariesTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="allowances" pt="md"><CatalogTab kind="allowance" /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="deductions" pt="md"><CatalogTab kind="deduction" /></Tabs.Panel>}
+        {canManage && <Tabs.Panel value="commissions" pt="md"><CommissionsTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="statutory" pt="md"><StatutoryRatesTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="loans" pt="md"><LoansAdvancesTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>}
@@ -263,6 +266,7 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                   <Table.Tr>
                     <Table.Th>#</Table.Th>
                     <Table.Th>Employee</Table.Th>
+                    <Table.Th>Commission</Table.Th>
                     <Table.Th>Gross</Table.Th>
                     {dedNames.map((name) => <Table.Th key={name}>{name}</Table.Th>)}
                     <Table.Th>Net Pay</Table.Th>
@@ -274,6 +278,7 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                     <Table.Tr key={p.id}>
                       <Table.Td>{i + 1}</Table.Td>
                       <Table.Td>{p.user?.name ?? '—'}</Table.Td>
+                      <Table.Td c={num(p.commissions_total) ? undefined : 'dimmed'}>{num(p.commissions_total) ? formatCurrency(p.commissions_total) : '—'}</Table.Td>
                       <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
                       {dedNames.map((name) => (
                         <Table.Td key={name}>{dedMaps[i][name] ? formatCurrency(dedMaps[i][name]) : '—'}</Table.Td>
@@ -300,6 +305,7 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                   <Table.Tr>
                     <Table.Th />
                     <Table.Th>Total</Table.Th>
+                    <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.commissions_total), 0))}</Table.Th>
                     <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
                     {dedNames.map((name) => (
                       <Table.Th key={name}>{formatCurrency(dedMaps.reduce((sum, m) => sum + (m[name] ?? 0), 0))}</Table.Th>
@@ -1043,6 +1049,140 @@ function AdvancesPanel() {
             <NumberInput label="Amount" required min={0} {...form.getInputProps('amount')} />
             <TextInput label="Issued Date" type="date" required {...form.getInputProps('issued_date')} />
             <TextInput label="Recovery Month" type="month" required {...form.getInputProps('recovery_month_key')} />
+            <Textarea label="Notes" minRows={2} {...form.getInputProps('notes')} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setModalOpen(false)}>Cancel</Button>
+              <Button type="submit" loading={createMut.isPending}>Save</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+    </Stack>
+  );
+}
+
+function CommissionsTab() {
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
+  const { data, isLoading } = useQuery({ queryKey: ['commissions'], queryFn: () => getCommissions() });
+
+  const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];
+  const commissions = data?.data?.data ?? [];
+
+  const form = useForm({
+    initialValues: {
+      user_id: '', amount: 0, earned_date: new Date().toISOString().slice(0, 10),
+      payout_month_key: new Date().toISOString().slice(0, 7), notes: '',
+    },
+    validate: {
+      user_id: (v) => (v ? null : 'Required'),
+      amount: (v) => (v > 0 ? null : 'Must be greater than 0'),
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: (values: typeof form.values) => createCommission(values),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Commission recorded', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['commissions'] });
+      setModalOpen(false);
+      form.reset();
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to record commission', color: 'red',
+    }),
+  });
+
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => cancelCommission(id),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Commission cancelled', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['commissions'] });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to cancel commission', color: 'red',
+    }),
+  });
+
+  const confirmCancel = (commission: Commission) => {
+    modals.openConfirmModal({
+      title: 'Cancel Commission',
+      children: <Text size="sm">Cancel this commission for {commission.user?.name}?</Text>,
+      labels: { confirm: 'Cancel Commission', cancel: 'Back' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => cancelMut.mutate(commission.id),
+    });
+  };
+
+  const statusColors: Record<string, string> = { pending: 'yellow', paid: 'green', cancelled: 'gray' };
+
+  return (
+    <Stack gap="md">
+      <Text size="xs" c="dimmed">
+        Record a commission for an employee — it is added on top of their basic salary (and any allowances) as part
+        of gross pay for the payout month chosen below, then flows through PAYE/statutory like the rest of their pay.
+      </Text>
+      <Group justify="flex-end">
+        <Button leftSection={<IconPlus size={14} />} size="xs" onClick={() => setModalOpen(true)}>Add Commission</Button>
+      </Group>
+
+      {isLoading ? <Center py="md"><Loader size="sm" /></Center> : commissions.length === 0 ? (
+        <Text c="dimmed" size="sm">No commissions recorded yet.</Text>
+      ) : (
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>#</Table.Th>
+              <Table.Th>Employee</Table.Th>
+              <Table.Th>Amount</Table.Th>
+              <Table.Th>Earned Date</Table.Th>
+              <Table.Th>Payout Month</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {commissions.map((c, i) => (
+              <Table.Tr key={c.id}>
+                <Table.Td>{i + 1}</Table.Td>
+                <Table.Td>{c.user?.name ?? '—'}</Table.Td>
+                <Table.Td>{formatCurrency(c.amount)}</Table.Td>
+                <Table.Td>{c.earned_date}</Table.Td>
+                <Table.Td>{c.payout_month_key}</Table.Td>
+                <Table.Td><Badge size="sm" color={statusColors[c.status]}>{c.status}</Badge></Table.Td>
+                <Table.Td>
+                  {c.status === 'pending' && (
+                    <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmCancel(c)}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+          <Table.Tfoot>
+            <Table.Tr>
+              <Table.Th />
+              <Table.Th>Total</Table.Th>
+              <Table.Th>{formatCurrency(commissions.reduce((sum, c) => sum + num(c.amount), 0))}</Table.Th>
+              <Table.Th />
+              <Table.Th />
+              <Table.Th />
+              <Table.Th />
+            </Table.Tr>
+          </Table.Tfoot>
+        </Table>
+      )}
+
+      <Modal opened={modalOpen} onClose={() => setModalOpen(false)} title="Add Commission">
+        <form onSubmit={form.onSubmit((values) => createMut.mutate(values))}>
+          <Stack gap="sm">
+            <Select label="Employee" required searchable data={users.map((u) => ({ value: u.id, label: u.name }))} {...form.getInputProps('user_id')} />
+            <NumberInput label="Amount" required min={0} {...form.getInputProps('amount')} />
+            <TextInput label="Earned Date" type="date" required {...form.getInputProps('earned_date')} />
+            <TextInput label="Payout Month" type="month" required {...form.getInputProps('payout_month_key')} />
             <Textarea label="Notes" minRows={2} {...form.getInputProps('notes')} />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setModalOpen(false)}>Cancel</Button>

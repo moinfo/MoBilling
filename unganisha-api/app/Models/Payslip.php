@@ -18,7 +18,8 @@ class Payslip extends Model
 
     protected $fillable = [
         'tenant_id', 'payroll_run_id', 'user_id',
-        'basic_salary', 'allowances_total', 'allowances_breakdown', 'gross_pay',
+        'basic_salary', 'allowances_total', 'allowances_breakdown',
+        'commissions_total', 'commissions_breakdown', 'gross_pay',
         'statutory_employee_total', 'statutory_employee_breakdown', 'taxable_income', 'paye_amount',
         'other_deductions_total', 'deductions_breakdown', 'net_pay',
         'statutory_employer_total', 'statutory_employer_breakdown', 'employer_cost_total',
@@ -26,6 +27,7 @@ class Payslip extends Model
 
     protected $casts = [
         'allowances_breakdown' => 'array',
+        'commissions_breakdown' => 'array',
         'deductions_breakdown' => 'array',
         'statutory_employee_breakdown' => 'array',
         'statutory_employer_breakdown' => 'array',

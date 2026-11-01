@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AllowanceSubscription;
 use App\Models\AttendancePenalty;
+use App\Models\Commission;
 use App\Models\DeductionSubscription;
 use App\Models\EmployeeProfile;
 use App\Models\Loan;
@@ -36,7 +37,7 @@ use Carbon\Carbon;
  */
 class PayrollCalculationService
 {
-    /** @return array{basic_salary:float,allowances_total:float,allowances_breakdown:array,gross_pay:float,statutory_employee_total:float,statutory_employee_breakdown:array,taxable_income:float,paye_amount:float,other_deductions_total:float,deductions_breakdown:array,net_pay:float,statutory_employer_total:float,statutory_employer_breakdown:array,employer_cost_total:float}|null */
+    /** @return array{basic_salary:float,allowances_total:float,allowances_breakdown:array,commissions_total:float,commissions_breakdown:array,gross_pay:float,statutory_employee_total:float,statutory_employee_breakdown:array,taxable_income:float,paye_amount:float,other_deductions_total:float,deductions_breakdown:array,net_pay:float,statutory_employer_total:float,statutory_employer_breakdown:array,employer_cost_total:float}|null */
     public function computeForUser(User $user, string $monthKey): ?array
     {
         $periodEnd = Carbon::createFromFormat('Y-m', $monthKey)->endOfMonth();
@@ -56,7 +57,15 @@ class PayrollCalculationService
             $basic,
         );
 
-        $gross = round($basic + $allowancesTotal, 2);
+        $commissionsTotal = 0.0;
+        $commissionsBreakdown = [];
+        foreach ($this->resolveCommissions($user, $monthKey) as $c) {
+            $commissionsTotal += $c['amount'];
+            $commissionsBreakdown[] = ['name' => 'Commission', 'amount' => $c['amount']];
+        }
+        $commissionsTotal = round($commissionsTotal, 2);
+
+        $gross = round($basic + $allowancesTotal + $commissionsTotal, 2);
 
         $profile = EmployeeProfile::withoutGlobalScopes()->where('user_id', $user->id)->first();
         $subjectToPaye = $profile?->subject_to_paye ?? true;
@@ -115,6 +124,8 @@ class PayrollCalculationService
             'basic_salary' => $basic,
             'allowances_total' => $allowancesTotal,
             'allowances_breakdown' => $allowancesBreakdown,
+            'commissions_total' => $commissionsTotal,
+            'commissions_breakdown' => $commissionsBreakdown,
             'gross_pay' => $gross,
             'statutory_employee_total' => $statutoryEmployeeTotal,
             'statutory_employee_breakdown' => $statutoryEmployeeBreakdown,
@@ -223,6 +234,30 @@ class PayrollCalculationService
             $amount = round((float) $advance->amount, 2);
             if ($amount > 0) {
                 $result[] = ['advance' => $advance, 'amount' => $amount];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Read-only projection of pending commissions payable this period
+     * (payout_month_key match) — never writes anything. Same
+     * shared-source-of-truth reasoning as resolveAdvanceRecoveries().
+     *
+     * @return array<int, array{commission: Commission, amount: float}>
+     */
+    public function resolveCommissions(User $user, string $monthKey): array
+    {
+        $commissions = Commission::withoutGlobalScopes()
+            ->where('user_id', $user->id)->where('status', 'pending')
+            ->where('payout_month_key', $monthKey)->get();
+
+        $result = [];
+        foreach ($commissions as $commission) {
+            $amount = round((float) $commission->amount, 2);
+            if ($amount > 0) {
+                $result[] = ['commission' => $commission, 'amount' => $amount];
             }
         }
 
