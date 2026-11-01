@@ -46,17 +46,27 @@ export default function EmployeeOfMonthVote() {
 
   return (
     <Box>
-      <Card withBorder radius="md" p="lg" className={canVoteNow ? classes.eotmCard : undefined}>
+      <div className={classes.sectionLabel} style={{ marginBottom: 12 }}>
+        <Text fw={700} size="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.5 }}>
+          Employee of the Month — {prettyPeriod}
+        </Text>
+      </div>
+
+      <Card withBorder radius="md" p="md" className={canVoteNow ? classes.eotmCard : undefined}>
         <Stack gap="md">
-          <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Group justify="space-between" align="center" wrap="nowrap">
             <Group gap="xs" wrap="nowrap">
-              <ThemeIcon size={36} radius="xl" variant="light" color="yellow">
-                <IconTrophy size={20} />
+              <ThemeIcon size={30} radius="xl" variant="light" color="yellow">
+                <IconTrophy size={16} />
               </ThemeIcon>
-              <div>
-                <Text fw={800} size="lg" lh={1.15}>Employee of the Month</Text>
-                <Text size="xs" c="dimmed">{prettyPeriod}</Text>
-              </div>
+              {!!cycle.prize_amount && (
+                <Group gap={6} wrap="nowrap">
+                  <IconGift size={14} color="var(--mantine-color-yellow-8)" />
+                  <Text size="sm" fw={700} c="yellow.9">
+                    Prize: TZS {Number(cycle.prize_amount).toLocaleString()}
+                  </Text>
+                </Group>
+              )}
             </Group>
             {canVoteNow && (
               <Badge
@@ -72,17 +82,6 @@ export default function EmployeeOfMonthVote() {
             <Group gap={6}>
               <Badge color="teal" variant="light" size="sm">{turnout.voted} voted</Badge>
               <Badge color="gray" variant="light" size="sm">{turnout.remaining} remaining</Badge>
-            </Group>
-          )}
-
-          {!!cycle.prize_amount && (
-            <Group gap={8} align="center">
-              <ThemeIcon size={24} radius="xl" variant="light" color="yellow">
-                <IconGift size={14} />
-              </ThemeIcon>
-              <Text size="sm" fw={700} c="yellow.9">
-                Prize for the winner: TZS {Number(cycle.prize_amount).toLocaleString()}
-              </Text>
             </Group>
           )}
 
