@@ -29,6 +29,9 @@ Schedule::command('staff-reports:send-reminders')->dailyAt('09:45')->withoutOver
 // After deadlines pass: charge missing-report deductions (idempotent).
 Schedule::command('staff-reports:apply-penalties')->dailyAt('00:30')->withoutOverlapping();
 Schedule::command('attendance:apply-penalties')->dailyAt('22:30')->withoutOverlapping();
+// Employee of the Month: open voting on the 1st (checked daily, gated inside the command), tally/close once the window passes.
+Schedule::command('eotm:open-voting')->dailyAt('00:15')->withoutOverlapping();
+Schedule::command('eotm:close-voting')->dailyAt('00:20')->withoutOverlapping();
 Schedule::command('attendance:import-device-events')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('wifi:check-router-health')->everyFifteenMinutes()->withoutOverlapping();
 // Explicit Africa/Dar_es_Salaam (UTC+3) so this doesn't silently mean

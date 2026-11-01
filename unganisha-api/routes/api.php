@@ -1192,6 +1192,14 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/commissions/{commission}',    [\App\Http\Controllers\CommissionController::class, 'show']);
     Route::post('/commissions/{commission}/cancel', [\App\Http\Controllers\CommissionController::class, 'cancel']);
 
+    // Employee of the Month — voting is open to any authenticated staff member (self-service, no permission
+    // middleware, same convention as /payslips/mine); history/votes/prize-setting are gated in-controller.
+    Route::get('/employee-of-month/current',              [\App\Http\Controllers\EmployeeOfMonthController::class, 'current']);
+    Route::post('/employee-of-month/vote',                [\App\Http\Controllers\EmployeeOfMonthController::class, 'vote']);
+    Route::get('/employee-of-month/cycles',                [\App\Http\Controllers\EmployeeOfMonthController::class, 'index']);
+    Route::get('/employee-of-month/cycles/{cycle}/votes',   [\App\Http\Controllers\EmployeeOfMonthController::class, 'votes']);
+    Route::put('/employee-of-month/cycles/{cycle}/prize',   [\App\Http\Controllers\EmployeeOfMonthController::class, 'setPrize']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/portal-users', [ClientPortalUserController::class, 'indexAll']);

@@ -22,6 +22,7 @@ import SubscriptionStats from '../components/Dashboard/SubscriptionStats';
 import HostingDomains from '../components/Dashboard/HostingDomains';
 import MyMonth from '../components/Dashboard/MyMonth';
 import MyPayroll from '../components/Dashboard/MyPayroll';
+import EmployeeOfMonthVote from '../components/Dashboard/EmployeeOfMonthVote';
 import RecentInvoices from '../components/Dashboard/RecentInvoices';
 import UpcomingBills from '../components/Dashboard/UpcomingBills';
 import UrgentObligations from '../components/Dashboard/UrgentObligations';
@@ -89,6 +90,7 @@ export default function Dashboard() {
         />
       )}
       <MyPayroll />
+      <EmployeeOfMonthVote />
 
       {summary && (
         <>

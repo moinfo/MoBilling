@@ -21,10 +21,11 @@ class PayrollSettings extends Model
 {
     use HasUuids, BelongsToTenant;
 
-    protected $fillable = ['tenant_id', 'paye_brackets'];
+    protected $fillable = ['tenant_id', 'paye_brackets', 'eotm_enabled'];
 
     protected $casts = [
         'paye_brackets' => 'array',
+        'eotm_enabled' => 'boolean',
     ];
 
     /** Each bracket: tax = base_deduction + rate% * (taxable_income - min), for min <= income < max (max null = no cap). */

@@ -29,6 +29,9 @@ import {
   getPayslipDeductionItems, recomputePayslip,
   PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance, Commission, Payslip,
 } from '../api/payroll';
+import {
+  getEotmCycles, getEotmCycleVotes, setEotmPrize, EotmCycle,
+} from '../api/employeeOfMonth';
 import { waiveAttendancePenalty, unwaiveAttendancePenalty, bulkWaiveAttendancePenalties } from '../api/attendance';
 import { waivePenalty as waiveReportPenalty, unwaivePenalty as unwaiveReportPenalty, bulkWaivePenalties as bulkWaiveReportPenalties } from '../api/staffReports';
 import { getAssignableUsers } from '../api/users';
@@ -75,6 +78,7 @@ export default function Payroll() {
           {canManage && <Tabs.Tab value="allowances">Allowances</Tabs.Tab>}
           {canManage && <Tabs.Tab value="deductions">Deductions</Tabs.Tab>}
           {canManage && <Tabs.Tab value="commissions">Commissions</Tabs.Tab>}
+          {canManage && <Tabs.Tab value="eotm">Employee of the Month</Tabs.Tab>}
           {canManage && <Tabs.Tab value="statutory">Statutory Rates</Tabs.Tab>}
           {canManage && <Tabs.Tab value="loans">Loans & Advances</Tabs.Tab>}
           {canManage && <Tabs.Tab value="settings">Settings</Tabs.Tab>}
@@ -86,6 +90,7 @@ export default function Payroll() {
         {canManage && <Tabs.Panel value="allowances" pt="md"><CatalogTab kind="allowance" /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="deductions" pt="md"><CatalogTab kind="deduction" /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="commissions" pt="md"><CommissionsTab /></Tabs.Panel>}
+        {canManage && <Tabs.Panel value="eotm" pt="md"><EotmAdminTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="statutory" pt="md"><StatutoryRatesTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="loans" pt="md"><LoansAdvancesTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>}
@@ -1195,6 +1200,133 @@ function CommissionsTab() {
   );
 }
 
+function EotmAdminTab() {
+  const queryClient = useQueryClient();
+  const [votesFor, setVotesFor] = useState<EotmCycle | null>(null);
+  const [prizeDrafts, setPrizeDrafts] = useState<Record<string, number>>({});
+
+  const { data, isLoading } = useQuery({ queryKey: ['eotm-cycles'], queryFn: getEotmCycles });
+  const cycles = data?.data?.data ?? [];
+
+  const prizeMut = useMutation({
+    mutationFn: ({ id, amount }: { id: string; amount: number }) => setEotmPrize(id, amount),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Prize saved', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['eotm-cycles'] });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to save prize', color: 'red',
+    }),
+  });
+
+  const statusColors: Record<string, string> = { open: 'yellow', closed: 'green' };
+
+  return (
+    <Stack gap="md">
+      <Text size="xs" c="dimmed">
+        A cycle opens automatically on the 1st of each month (voting runs through the 3rd) once Employee of the
+        Month is enabled under the Settings tab. Set the prize amount any time — it creates/updates a Commission
+        for the winner once the cycle is tallied.
+      </Text>
+
+      {isLoading ? <Center py="md"><Loader size="sm" /></Center> : cycles.length === 0 ? (
+        <Text c="dimmed" size="sm">No cycles yet.</Text>
+      ) : (
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Period</Table.Th>
+              <Table.Th>Voting Window</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th>Winner</Table.Th>
+              <Table.Th>Votes</Table.Th>
+              <Table.Th>Prize</Table.Th>
+              <Table.Th />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {cycles.map((c) => (
+              <Table.Tr key={c.id}>
+                <Table.Td fw={500}>{c.period_month_key}</Table.Td>
+                <Table.Td>{c.voting_opens_on} → {c.voting_closes_on}</Table.Td>
+                <Table.Td><Badge size="sm" color={statusColors[c.status]}>{c.status}</Badge></Table.Td>
+                <Table.Td>{c.winner?.name ?? '—'}</Table.Td>
+                <Table.Td>{c.winner_vote_count ?? '—'}</Table.Td>
+                <Table.Td>
+                  <Group gap={4} wrap="nowrap">
+                    <NumberInput
+                      size="xs" w={120} placeholder="Amount"
+                      value={prizeDrafts[c.id] ?? c.prize_amount ?? undefined}
+                      onChange={(v) => setPrizeDrafts((prev) => ({ ...prev, [c.id]: Number(v) || 0 }))}
+                    />
+                    <Button
+                      size="xs" variant="light" loading={prizeMut.isPending}
+                      onClick={() => prizeMut.mutate({ id: c.id, amount: prizeDrafts[c.id] ?? num(c.prize_amount) })}
+                    >
+                      Save
+                    </Button>
+                  </Group>
+                  {c.winner_commission_id && <Text size="xs" c="dimmed">Commission created</Text>}
+                </Table.Td>
+                <Table.Td>
+                  <Button size="xs" variant="subtle" onClick={() => setVotesFor(c)}>View votes</Button>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+
+      {votesFor && <EotmVotesModal cycle={votesFor} onClose={() => setVotesFor(null)} />}
+    </Stack>
+  );
+}
+
+function EotmVotesModal({ cycle, onClose }: { cycle: EotmCycle; onClose: () => void }) {
+  const { data, isLoading } = useQuery({ queryKey: ['eotm-cycle-votes', cycle.id], queryFn: () => getEotmCycleVotes(cycle.id) });
+  const detail = data?.data?.data;
+
+  return (
+    <Modal opened onClose={onClose} title={`Votes — ${cycle.period_month_key}`} size="lg">
+      {isLoading ? <Center py="md"><Loader size="sm" /></Center> : !detail ? null : (
+        <Stack gap="md">
+          <div>
+            <Text size="sm" fw={600} mb={4}>Results</Text>
+            <Table>
+              <Table.Thead><Table.Tr><Table.Th>Employee</Table.Th><Table.Th>Votes</Table.Th></Table.Tr></Table.Thead>
+              <Table.Tbody>
+                {detail.results.map((r) => (
+                  <Table.Tr key={r.user_id}>
+                    <Table.Td>{r.name}</Table.Td>
+                    <Table.Td fw={r.votes > 0 ? 600 : undefined}>{r.votes}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </div>
+          <div>
+            <Text size="sm" fw={600} mb={4}>Who voted for whom (and why)</Text>
+            {detail.votes.length === 0 ? <Text size="sm" c="dimmed">No votes cast yet.</Text> : (
+              <Table>
+                <Table.Thead><Table.Tr><Table.Th>Voter</Table.Th><Table.Th>Voted for</Table.Th><Table.Th>Reason</Table.Th></Table.Tr></Table.Thead>
+                <Table.Tbody>
+                  {detail.votes.map((v) => (
+                    <Table.Tr key={v.id}>
+                      <Table.Td>{v.voter.name}</Table.Td>
+                      <Table.Td>{v.candidate.name}</Table.Td>
+                      <Table.Td>{v.reason}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </div>
+        </Stack>
+      )}
+    </Modal>
+  );
+}
+
 function CatalogTab({ kind }: { kind: 'allowance' | 'deduction' }) {
   const queryClient = useQueryClient();
   const isAllowance = kind === 'allowance';
@@ -1570,6 +1702,17 @@ function SettingsTab() {
     }),
   });
 
+  const eotmMut = useMutation({
+    mutationFn: (eotm_enabled: boolean) => updatePayrollSettings({ eotm_enabled }),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Employee of the Month setting saved', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['payroll-settings'] });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to save', color: 'red',
+    }),
+  });
+
   const updateBracket = (i: number, field: keyof PayeBracket, value: number | null) => {
     setBrackets((prev) => prev.map((b, idx) => idx === i ? { ...b, [field]: value } : b));
   };
@@ -1581,6 +1724,24 @@ function SettingsTab() {
 
   return (
     <Stack gap="md">
+      <Paper withBorder p="md" radius="md">
+        <Group justify="space-between">
+          <div>
+            <Text size="sm" fw={600}>Employee of the Month voting</Text>
+            <Text size="xs" c="dimmed" maw={520}>
+              When on, every active staff member can vote 1st–3rd of each month for the previous month's best
+              employee (from their dashboard/app), with results visible to everyone. Set the winner's prize from
+              the "Employee of the Month" tab — it's added to their pay via a Commission.
+            </Text>
+          </div>
+          <Switch
+            checked={data?.data?.data.eotm_enabled ?? false}
+            onChange={(e) => eotmMut.mutate(e.currentTarget.checked)}
+            disabled={eotmMut.isPending}
+          />
+        </Group>
+      </Paper>
+
       <Alert color="yellow" icon={<IconAlertTriangle size={18} />} title="Verify before real use">
         These PAYE brackets (and the default NSSF/WCF/SDL rates under the "Statutory Rates" tab) are seeded
         with commonly-cited default figures — they are <strong>not guaranteed to be current</strong>.

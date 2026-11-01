@@ -10,6 +10,7 @@ export interface PayeBracket {
 export interface PayrollSettings {
   id: string;
   paye_brackets: PayeBracket[];
+  eotm_enabled: boolean;
 }
 
 export interface StatutoryRate {
@@ -101,7 +102,7 @@ export interface Payslip {
 
 // Settings (PAYE brackets only — NSSF/WCF/SDL/etc. live in the Statutory Rates catalog below)
 export const getPayrollSettings = () => api.get<{ data: PayrollSettings }>('/payroll-settings');
-export const updatePayrollSettings = (data: { paye_brackets: PayeBracket[] }) => api.put<{ data: PayrollSettings }>('/payroll-settings', data);
+export const updatePayrollSettings = (data: { paye_brackets?: PayeBracket[]; eotm_enabled?: boolean }) => api.put<{ data: PayrollSettings }>('/payroll-settings', data);
 
 // Statutory Rates (tenant-configurable catalog: NSSF, WCF, SDL, NHIF, or anything else)
 export const getStatutoryRates = () => api.get<{ data: StatutoryRate[] }>('/statutory-rates');

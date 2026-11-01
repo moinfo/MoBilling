@@ -22,11 +22,12 @@ class PayrollSettingsController extends Controller
         $this->authorizePermission('payroll.manage');
 
         $data = $request->validate([
-            'paye_brackets' => 'required|array|min:1',
-            'paye_brackets.*.min' => 'required|numeric|min:0',
+            'paye_brackets' => 'sometimes|array|min:1',
+            'paye_brackets.*.min' => 'required_with:paye_brackets|numeric|min:0',
             'paye_brackets.*.max' => 'nullable|numeric|gt:paye_brackets.*.min',
-            'paye_brackets.*.rate' => 'required|numeric|min:0|max:100',
-            'paye_brackets.*.base_deduction' => 'required|numeric|min:0',
+            'paye_brackets.*.rate' => 'required_with:paye_brackets|numeric|min:0|max:100',
+            'paye_brackets.*.base_deduction' => 'required_with:paye_brackets|numeric|min:0',
+            'eotm_enabled' => 'sometimes|boolean',
         ]);
 
         $settings = PayrollSettings::forTenant(auth()->user()->tenant_id);
