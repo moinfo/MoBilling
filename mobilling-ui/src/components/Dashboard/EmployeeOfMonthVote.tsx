@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Box, Card, Text, Select, Textarea, Button, Group, Badge, Table, Stack, ThemeIcon } from '@mantine/core';
-import { IconTrophy, IconSparkles } from '@tabler/icons-react';
+import { IconTrophy, IconSparkles, IconGift } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs';
@@ -72,6 +72,17 @@ export default function EmployeeOfMonthVote() {
             <Group gap={6}>
               <Badge color="teal" variant="light" size="sm">{turnout.voted} wamepiga kura</Badge>
               <Badge color="gray" variant="light" size="sm">{turnout.remaining} bado</Badge>
+            </Group>
+          )}
+
+          {!!cycle.prize_amount && (
+            <Group gap={8} align="center">
+              <ThemeIcon size={24} radius="xl" variant="light" color="yellow">
+                <IconGift size={14} />
+              </ThemeIcon>
+              <Text size="sm" fw={700} c="yellow.9">
+                Zawadi kwa mshindi: TZS {Number(cycle.prize_amount).toLocaleString()}
+              </Text>
             </Group>
           )}
 

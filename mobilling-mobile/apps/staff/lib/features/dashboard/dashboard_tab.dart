@@ -1645,6 +1645,24 @@ class _EmployeeOfMonthCard extends ConsumerWidget {
                   ),
                 ),
               ),
+            if (eotm.cycle.prizeAmount != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.sm),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.card_giftcard_outlined, size: 16, color: Colors.amber.shade800),
+                    const SizedBox(width: Spacing.xs),
+                    Text(
+                      'Zawadi kwa mshindi: ${Formatting.currency(eotm.cycle.prizeAmount)}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.amber.shade800,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (eotm.canVoteNow)
               _EotmVoteForm(cycleId: eotm.cycle.id, candidates: eotm.candidates)
             else
