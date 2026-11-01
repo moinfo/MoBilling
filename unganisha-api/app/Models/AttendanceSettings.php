@@ -20,4 +20,18 @@ class AttendanceSettings extends Model
         'exception_window_to' => 'date:Y-m-d',
         'exception_review_month' => 'date:Y-m-d',
     ];
+
+    /**
+     * Stored in a real SQL TIME column (unlike check_in_time/check_out_time,
+     * which are plain H:i strings), so MySQL always returns it as "H:i:s".
+     * Strip the seconds on read so the settings form can round-trip this
+     * value unchanged through PUT /attendance/settings, whose validation
+     * requires strict "H:i" — without this, saving any OTHER field (e.g.
+     * the exception window) fails with a confusing generic error the
+     * moment this field has ever been set.
+     */
+    public function getSaturdayCheckOutTimeAttribute($value)
+    {
+        return $value ? substr($value, 0, 5) : $value;
+    }
 }
