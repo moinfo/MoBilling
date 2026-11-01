@@ -20,23 +20,23 @@ class EmployeeOfMonthWinnerNotification extends Notification implements ShouldQu
 
     public function toFcm($notifiable): ?array
     {
-        $winnerName = $this->cycle->winner?->name ?? 'Hakuna mshindi';
+        $winnerName = $this->cycle->winner?->name ?? 'No winner';
 
         return [
-            'title' => 'Mfanyakazi Bora wa Mwezi',
-            'body'  => "{$winnerName} amechaguliwa Mfanyakazi Bora wa mwezi {$this->cycle->period_month_key} kwa kura {$this->cycle->winner_vote_count}.",
+            'title' => 'Employee of the Month',
+            'body'  => "{$winnerName} was voted Employee of the Month for {$this->cycle->period_month_key} with {$this->cycle->winner_vote_count} vote(s).",
             'data'  => ['type' => 'eotm_winner', 'cycle_id' => $this->cycle->id],
         ];
     }
 
     public function toArray($notifiable): array
     {
-        $winnerName = $this->cycle->winner?->name ?? 'Hakuna mshindi';
+        $winnerName = $this->cycle->winner?->name ?? 'No winner';
 
         return [
             'type' => 'eotm_winner',
-            'title' => 'Mfanyakazi Bora wa Mwezi',
-            'message' => "{$winnerName} amechaguliwa Mfanyakazi Bora wa mwezi {$this->cycle->period_month_key} kwa kura {$this->cycle->winner_vote_count}.",
+            'title' => 'Employee of the Month',
+            'message' => "{$winnerName} was voted Employee of the Month for {$this->cycle->period_month_key} with {$this->cycle->winner_vote_count} vote(s).",
             'cycle_id' => $this->cycle->id,
             'url' => '/dashboard',
         ];

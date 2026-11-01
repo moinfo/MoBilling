@@ -1638,7 +1638,7 @@ class _EmployeeOfMonthCard extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: Spacing.sm),
                 child: Text(
-                  '${eotm.turnout.voted} wamepiga kura · ${eotm.turnout.remaining} bado',
+                  '${eotm.turnout.voted} voted · ${eotm.turnout.remaining} remaining',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.primary,
                     fontWeight: FontWeight.w600,
@@ -1654,7 +1654,7 @@ class _EmployeeOfMonthCard extends ConsumerWidget {
                     Icon(Icons.card_giftcard_outlined, size: 16, color: Colors.amber.shade800),
                     const SizedBox(width: Spacing.xs),
                     Text(
-                      'Zawadi kwa mshindi: ${Formatting.currency(eotm.cycle.prizeAmount)}',
+                      'Prize for the winner: ${Formatting.currency(eotm.cycle.prizeAmount)}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: Colors.amber.shade800,
                         fontWeight: FontWeight.w700,
@@ -1703,7 +1703,7 @@ class _EotmVoteFormState extends ConsumerState<_EotmVoteForm> {
 
   Future<void> _submit() async {
     if (_candidateId == null || _reason.text.trim().length < 3) {
-      setState(() => _error = 'Chagua mfanyakazi na andika sababu (angalau herufi 3).');
+      setState(() => _error = 'Choose an employee and write a reason (at least 3 characters).');
       return;
     }
     setState(() {
@@ -1735,7 +1735,7 @@ class _EotmVoteFormState extends ConsumerState<_EotmVoteForm> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Piga kura mfanyakazi bora wa mwezi uliopita. Haiwezekani kujipigia kura wewe mwenyewe.',
+              "Vote for last month's best employee. You can't vote for yourself.",
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: Spacing.md),
@@ -1743,28 +1743,28 @@ class _EotmVoteFormState extends ConsumerState<_EotmVoteForm> {
               ErrorBanner(message: _error!),
               const SizedBox(height: Spacing.sm),
             ],
-            Text('Nani?', style: theme.textTheme.titleSmall),
+            Text('Who?', style: theme.textTheme.titleSmall),
             const SizedBox(height: Spacing.xs),
             DropdownButtonFormField<String>(
               initialValue: _candidateId,
-              decoration: const InputDecoration(hintText: 'Chagua mfanyakazi'),
+              decoration: const InputDecoration(hintText: 'Choose an employee'),
               items: [
                 for (final c in widget.candidates) DropdownMenuItem(value: c.id, child: Text(c.name)),
               ],
               onChanged: (v) => setState(() => _candidateId = v),
             ),
             const SizedBox(height: Spacing.md),
-            Text('Kwa nini?', style: theme.textTheme.titleSmall),
+            Text('Why?', style: theme.textTheme.titleSmall),
             const SizedBox(height: Spacing.xs),
             TextField(
               controller: _reason,
               maxLines: 2,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(hintText: 'Andika sababu yako...'),
+              decoration: const InputDecoration(hintText: 'Write your reason...'),
             ),
             const SizedBox(height: Spacing.md),
             PrimaryButton(
-              label: _saving ? 'Inatuma…' : 'Piga Kura',
+              label: _saving ? 'Submitting…' : 'Vote',
               busy: _saving,
               onPressed: _saving ? null : _submit,
             ),
@@ -1807,17 +1807,17 @@ class _EotmResultsCard extends StatelessWidget {
             if (eotm.hasVoted && eotm.isOpenNow) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
-                child: Text('Umepiga kura tayari — asante!', style: theme.textTheme.bodySmall),
+                child: Text("You've already voted — thank you!", style: theme.textTheme.bodySmall),
               ),
               if (myVoteCandidate != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 2),
-                  child: Text('Umempigia kura: ${myVoteCandidate.name}', style: theme.textTheme.bodySmall),
+                  child: Text('You voted for: ${myVoteCandidate.name}', style: theme.textTheme.bodySmall),
                 ),
               Padding(
                 padding: const EdgeInsets.only(bottom: Spacing.sm),
                 child: Text(
-                  'Matokeo ya wafanyakazi wote yataonekana hapa mara kura zitakapofungwa na kuhesabiwa kiotomatiki.',
+                  "Everyone's results will appear here once voting closes and is automatically tallied.",
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               ),
@@ -1833,7 +1833,7 @@ class _EotmResultsCard extends StatelessWidget {
                       const SizedBox(width: Spacing.sm),
                       Expanded(
                         child: Text(
-                          'Mshindi: ${cycle.winner!.name} (${cycle.winnerVoteCount} kura)'
+                          'Winner: ${cycle.winner!.name} (${cycle.winnerVoteCount} votes)'
                           '${cycle.prizeAmount != null ? ' — ${Formatting.currency(cycle.prizeAmount)}' : ''}',
                           style: theme.textTheme.titleSmall,
                         ),
@@ -1844,10 +1844,10 @@ class _EotmResultsCard extends StatelessWidget {
               else
                 Padding(
                   padding: const EdgeInsets.only(bottom: Spacing.sm),
-                  child: Text('Hakuna mshindi — hakuna kura zilizopigwa.', style: theme.textTheme.bodySmall),
+                  child: Text('No winner — no votes were cast.', style: theme.textTheme.bodySmall),
                 ),
               Text(
-                'Matokeo ya kura:',
+                'Results:',
                 style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: Spacing.xs),

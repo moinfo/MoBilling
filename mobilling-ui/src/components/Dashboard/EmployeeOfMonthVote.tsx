@@ -15,8 +15,8 @@ import classes from './Dashboard.module.css';
  *
  * This is the one dashboard card that needs someone to actually DO
  * something before a deadline (unlike every other card, which is just a
- * number to read) — it's given a visible accent + a "MPYA" pulse on
- * purpose, so it doesn't blend into the rest of the page while voting is open.
+ * number to read) — it's given a visible accent + a pulsing "VOTE NOW" badge
+ * on purpose, so it doesn't blend into the rest of the page while voting is open.
  */
 export default function EmployeeOfMonthVote() {
   const queryClient = useQueryClient();
@@ -29,11 +29,11 @@ export default function EmployeeOfMonthVote() {
   const voteMut = useMutation({
     mutationFn: () => castEotmVote({ cycle_id: current!.cycle.id, candidate_id: candidateId!, reason }),
     onSuccess: () => {
-      notifications.show({ title: 'Asante!', message: 'Kura yako imepokelewa.', color: 'green' });
+      notifications.show({ title: 'Thank you!', message: 'Your vote has been recorded.', color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['eotm-current'] });
     },
     onError: (err: any) => notifications.show({
-      title: 'Hitilafu', message: err.response?.data?.message || 'Imeshindwa kutuma kura.', color: 'red',
+      title: 'Error', message: err.response?.data?.message || 'Failed to submit your vote.', color: 'red',
     }),
   });
 
@@ -54,7 +54,7 @@ export default function EmployeeOfMonthVote() {
                 <IconTrophy size={20} />
               </ThemeIcon>
               <div>
-                <Text fw={800} size="lg" lh={1.15}>Mfanyakazi Bora wa Mwezi</Text>
+                <Text fw={800} size="lg" lh={1.15}>Employee of the Month</Text>
                 <Text size="xs" c="dimmed">{prettyPeriod}</Text>
               </div>
             </Group>
@@ -63,15 +63,15 @@ export default function EmployeeOfMonthVote() {
                 color="red" variant="light" size="sm" radius="sm"
                 leftSection={<span className={classes.eotmPulseDot} />}
               >
-                PIGA KURA SASA
+                VOTE NOW
               </Badge>
             )}
           </Group>
 
           {is_open_now && (
             <Group gap={6}>
-              <Badge color="teal" variant="light" size="sm">{turnout.voted} wamepiga kura</Badge>
-              <Badge color="gray" variant="light" size="sm">{turnout.remaining} bado</Badge>
+              <Badge color="teal" variant="light" size="sm">{turnout.voted} voted</Badge>
+              <Badge color="gray" variant="light" size="sm">{turnout.remaining} remaining</Badge>
             </Group>
           )}
 
@@ -81,7 +81,7 @@ export default function EmployeeOfMonthVote() {
                 <IconGift size={14} />
               </ThemeIcon>
               <Text size="sm" fw={700} c="yellow.9">
-                Zawadi kwa mshindi: TZS {Number(cycle.prize_amount).toLocaleString()}
+                Prize for the winner: TZS {Number(cycle.prize_amount).toLocaleString()}
               </Text>
             </Group>
           )}
@@ -89,12 +89,12 @@ export default function EmployeeOfMonthVote() {
           {canVoteNow ? (
             <Stack gap="sm">
               <Text size="sm">
-                Chagua mfanyakazi bora wa mwezi {prettyPeriod}. Kura zinafunga tarehe{' '}
-                <strong>{dayjs(cycle.voting_closes_on).format('D MMMM')}</strong> — haiwezekani kujipigia kura wewe mwenyewe.
+                Pick the best employee for {prettyPeriod}. Voting closes on{' '}
+                <strong>{dayjs(cycle.voting_closes_on).format('D MMMM')}</strong> — you can't vote for yourself.
               </Text>
               <Select
-                label="Nani?"
-                placeholder="Chagua mfanyakazi"
+                label="Who?"
+                placeholder="Choose an employee"
                 searchable
                 size="md"
                 data={candidates.map((c) => ({ value: c.id, label: c.name }))}
@@ -102,8 +102,8 @@ export default function EmployeeOfMonthVote() {
                 onChange={setCandidateId}
               />
               <Textarea
-                label="Kwa nini umemchagua?"
-                placeholder="Andika sababu yako..."
+                label="Why did you pick them?"
+                placeholder="Write your reason..."
                 minRows={2}
                 size="md"
                 value={reason}
@@ -118,22 +118,22 @@ export default function EmployeeOfMonthVote() {
                 loading={voteMut.isPending}
                 onClick={() => voteMut.mutate()}
               >
-                Piga Kura
+                Vote
               </Button>
             </Stack>
           ) : (
             <Stack gap="xs">
               {has_voted && is_open_now && (
                 <Stack gap={4}>
-                  <Text size="sm" c="dimmed">Umepiga kura tayari kwa mzunguko huu — asante!</Text>
+                  <Text size="sm" c="dimmed">You've already voted in this cycle — thank you!</Text>
                   {myVoteCandidate && (
                     <Text size="sm">
-                      Umempigia kura: <strong>{myVoteCandidate.name}</strong>
+                      You voted for: <strong>{myVoteCandidate.name}</strong>
                     </Text>
                   )}
                   <Text size="xs" c="dimmed">
-                    Matokeo ya kura wa wafanyakazi wote yataonekana hapa mara kura zitakapofungwa na kuhesabiwa kiotomatiki
-                    tarehe {dayjs(cycle.voting_closes_on).format('D MMMM')}.
+                    Everyone's results will appear here once voting closes and is automatically tallied on{' '}
+                    {dayjs(cycle.voting_closes_on).format('D MMMM')}.
                   </Text>
                 </Stack>
               )}
@@ -144,15 +144,15 @@ export default function EmployeeOfMonthVote() {
                     <Group gap="xs">
                       <IconTrophy size={18} color="var(--mantine-color-yellow-6)" />
                       <Text size="sm" fw={600}>
-                        Mshindi: {cycle.winner.name} ({cycle.winner_vote_count} kura)
-                        {cycle.prize_amount ? ` — Zawadi TZS ${Number(cycle.prize_amount).toLocaleString()}` : ''}
+                        Winner: {cycle.winner.name} ({cycle.winner_vote_count} votes)
+                        {cycle.prize_amount ? ` — Prize TZS ${Number(cycle.prize_amount).toLocaleString()}` : ''}
                       </Text>
                     </Group>
                   ) : (
-                    <Text size="sm" c="dimmed">Hakuna mshindi — hakuna kura zilizopigwa.</Text>
+                    <Text size="sm" c="dimmed">No winner — no votes were cast.</Text>
                   )}
 
-                  <Text size="xs" c="dimmed" mt="xs">Matokeo ya kura — wafanyakazi wote:</Text>
+                  <Text size="xs" c="dimmed" mt="xs">Vote results — all staff:</Text>
                   <Table.ScrollContainer minWidth={280}>
                     <Table striped>
                       <Table.Tbody>
@@ -161,7 +161,7 @@ export default function EmployeeOfMonthVote() {
                             <Table.Td>{r.name}</Table.Td>
                             <Table.Td style={{ textAlign: 'right' }}>
                               <Badge size="sm" variant={r.votes > 0 ? 'light' : 'outline'} color={r.votes > 0 ? 'blue' : 'gray'}>
-                                {r.votes} kura
+                                {r.votes} vote{r.votes === 1 ? '' : 's'}
                               </Badge>
                             </Table.Td>
                           </Table.Tr>

@@ -22,7 +22,7 @@ class EmployeeOfMonthVotingOpenNotification extends Notification implements Shou
     {
         return [
             'title' => 'Employee of the Month — vote now',
-            'body'  => "Piga kura mfanyakazi bora wa mwezi uliopita kabla ya {$this->cycle->voting_closes_on->format('d M')}.",
+            'body'  => "Vote for last month's best employee before {$this->cycle->voting_closes_on->format('d M')}.",
             'data'  => ['type' => 'eotm_vote_open', 'cycle_id' => $this->cycle->id],
         ];
     }
@@ -32,7 +32,7 @@ class EmployeeOfMonthVotingOpenNotification extends Notification implements Shou
         return [
             'type' => 'eotm_vote_open',
             'title' => 'Employee of the Month — vote now',
-            'message' => "Piga kura mfanyakazi bora wa mwezi uliopita kabla ya {$this->cycle->voting_closes_on->format('d M')}.",
+            'message' => "Vote for last month's best employee before {$this->cycle->voting_closes_on->format('d M')}.",
             'cycle_id' => $this->cycle->id,
             'url' => '/dashboard',
         ];

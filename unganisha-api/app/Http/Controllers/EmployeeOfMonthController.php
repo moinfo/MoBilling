@@ -67,16 +67,16 @@ class EmployeeOfMonthController extends Controller
         ]);
 
         if ($data['candidate_id'] === $userId) {
-            throw ValidationException::withMessages(['candidate_id' => 'Haiwezekani kujipigia kura wewe mwenyewe.']);
+            throw ValidationException::withMessages(['candidate_id' => 'You cannot vote for yourself.']);
         }
 
         $cycle = EmployeeOfMonthCycle::where('tenant_id', $tenantId)->findOrFail($data['cycle_id']);
         if (!$cycle->isOpenNow()) {
-            return response()->json(['message' => 'Muda wa kupiga kura haujafunguliwa au umefungwa.'], 422);
+            return response()->json(['message' => 'Voting is not currently open.'], 422);
         }
 
         if (EmployeeOfMonthVote::where('cycle_id', $cycle->id)->where('voter_id', $userId)->exists()) {
-            return response()->json(['message' => 'Umepiga kura kwenye mzunguko huu tayari.'], 422);
+            return response()->json(['message' => 'You have already voted in this cycle.'], 422);
         }
 
         $vote = EmployeeOfMonthVote::create([
@@ -163,7 +163,7 @@ class EmployeeOfMonthController extends Controller
         return ['voted' => $voted, 'total' => $total, 'remaining' => max(0, $total - $voted)];
     }
 
-    /** Every active employee, 0 votes included — "list ya wafanyakazi wote na kura zao", not just those who got any. */
+    /** Every active employee, 0 votes included — a list of all staff and their vote counts, not just those who got any. */
     private function resultsFor(EmployeeOfMonthCycle $cycle, string $tenantId): array
     {
         $counts = EmployeeOfMonthVote::where('cycle_id', $cycle->id)
