@@ -9,6 +9,7 @@ import '../../providers.dart';
 import '../hr/hr_providers.dart';
 import '../hr/payroll_screen.dart' show showPayslipSheet;
 import '../staff_self/staff_self_providers.dart';
+import 'eotm_providers.dart';
 
 /// Staff dashboard: this month's money, counts, recent invoices.
 ///
@@ -244,6 +245,8 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                       // ahead of the company-wide sections below.
                       const SizedBox(height: Spacing.md),
                       const _MyPayrollCard(),
+                      const SizedBox(height: Spacing.md),
+                      const _EmployeeOfMonthCard(),
                       if (d.hosting != null) ...[
                         const SizedBox(height: Spacing.md),
                         const SectionHeader('Hosting & domains'),
@@ -1606,6 +1609,211 @@ class _MyPayrollCard extends ConsumerWidget {
         );
       },
       orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// Employee of the Month — self-service, no permission required. Renders
+/// nothing while loading, on error, or when the tenant hasn't enabled the
+/// feature (eotmCurrentProvider resolves to null in that case) — same
+/// "secondary widget, no error state of its own" rationale as
+/// [_MyPayrollCard] above it.
+class _EmployeeOfMonthCard extends ConsumerWidget {
+  const _EmployeeOfMonthCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(eotmCurrentProvider);
+    return current.maybeWhen(
+      data: (eotm) {
+        if (eotm == null) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SectionHeader('Employee of the Month — ${_monthLabel(eotm.cycle.periodMonthKey)}'),
+            const SizedBox(height: Spacing.sm),
+            if (eotm.canVoteNow)
+              _EotmVoteForm(cycleId: eotm.cycle.id, candidates: eotm.candidates)
+            else
+              _EotmResultsCard(eotm: eotm),
+          ],
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// The vote form — shown only while the window is open and this person
+/// hasn't voted yet. Mirrors `_RequestLeaveSheetState`'s manual
+/// validate-then-submit shape (no `Form`/`GlobalKey<FormState>` anywhere
+/// else in this app either).
+class _EotmVoteForm extends ConsumerStatefulWidget {
+  const _EotmVoteForm({required this.cycleId, required this.candidates});
+
+  final String cycleId;
+  final List<NamedUser> candidates;
+
+  @override
+  ConsumerState<_EotmVoteForm> createState() => _EotmVoteFormState();
+}
+
+class _EotmVoteFormState extends ConsumerState<_EotmVoteForm> {
+  final _reason = TextEditingController();
+  String? _candidateId;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_candidateId == null || _reason.text.trim().length < 3) {
+      setState(() => _error = 'Chagua mfanyakazi na andika sababu (angalau herufi 3).');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await ref.read(eotmServiceProvider).vote(
+            cycleId: widget.cycleId,
+            candidateId: _candidateId!,
+            reason: _reason.text.trim(),
+          );
+      ref.invalidate(eotmCurrentProvider);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Piga kura mfanyakazi bora wa mwezi uliopita. Haiwezekani kujipigia kura wewe mwenyewe.',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: Spacing.md),
+            if (_error != null) ...[
+              ErrorBanner(message: _error!),
+              const SizedBox(height: Spacing.sm),
+            ],
+            Text('Nani?', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.xs),
+            DropdownButtonFormField<String>(
+              initialValue: _candidateId,
+              decoration: const InputDecoration(hintText: 'Chagua mfanyakazi'),
+              items: [
+                for (final c in widget.candidates) DropdownMenuItem(value: c.id, child: Text(c.name)),
+              ],
+              onChanged: (v) => setState(() => _candidateId = v),
+            ),
+            const SizedBox(height: Spacing.md),
+            Text('Kwa nini?', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.xs),
+            TextField(
+              controller: _reason,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(hintText: 'Andika sababu yako...'),
+            ),
+            const SizedBox(height: Spacing.md),
+            PrimaryButton(
+              label: _saving ? 'Inatuma…' : 'Piga Kura',
+              busy: _saving,
+              onPressed: _saving ? null : _submit,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Everyone sees this: every active employee and their vote count (never
+/// just those with votes), plus the winner banner once the cycle closes.
+class _EotmResultsCard extends StatelessWidget {
+  const _EotmResultsCard({required this.eotm});
+
+  final EotmCurrent eotm;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cycle = eotm.cycle;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (eotm.hasVoted && eotm.isOpenNow)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.sm),
+                child: Text('Umepiga kura tayari — asante!', style: theme.textTheme.bodySmall),
+              ),
+            if (cycle.isClosed && cycle.winner != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.sm),
+                child: Row(
+                  children: [
+                    Icon(Icons.emoji_events_outlined, color: Colors.amber.shade700, size: 20),
+                    const SizedBox(width: Spacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Mshindi: ${cycle.winner!.name} (${cycle.winnerVoteCount} kura)'
+                        '${cycle.prizeAmount != null ? ' — ${Formatting.currency(cycle.prizeAmount)}' : ''}',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (cycle.isClosed && cycle.winner == null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.sm),
+                child: Text('Hakuna mshindi — hakuna kura zilizopigwa.', style: theme.textTheme.bodySmall),
+              ),
+            Text(
+              'Matokeo ya kura:',
+              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: Spacing.xs),
+            for (final r in eotm.results)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis)),
+                    Text(
+                      '${r.votes}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: r.votes > 0 ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

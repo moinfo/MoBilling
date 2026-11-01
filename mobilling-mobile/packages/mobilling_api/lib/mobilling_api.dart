@@ -26,6 +26,8 @@ export 'src/staff/comms_models.dart';
 export 'src/staff/comms_service.dart';
 export 'src/staff/crm_models.dart';
 export 'src/staff/crm_service.dart';
+export 'src/staff/eotm_models.dart';
+export 'src/staff/eotm_service.dart';
 export 'src/staff/finance_models.dart';
 export 'src/staff/platform_models.dart';
 export 'src/staff/platform_service.dart';

@@ -99,6 +99,11 @@ String? _pathFor(Map<String, dynamic> data, AppShell shell) {
     // LeaveRequestSubmitted/Decided — staff.
     case 'leave_request':
       return '/leave';
+    // EmployeeOfMonthVotingOpen/Winner — staff; the vote card and results
+    // live on the dashboard, no dedicated screen.
+    case 'eotm_vote_open':
+    case 'eotm_winner':
+      return '/home';
     // StaffReportSubmitted/Reviewed/Reply/DeadlineReminder — staff. The
     // deadline reminder carries no id at all; the other three have one but
     // no `/staff-reports/:id` route exists yet either way.
