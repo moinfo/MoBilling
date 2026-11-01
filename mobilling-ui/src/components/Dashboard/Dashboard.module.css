@@ -173,3 +173,38 @@
 /* The payslip stands apart from the "Your month" band on purpose: it describes
    a closed period (last month's pay), not the running one. */
 .payslip { max-width: 460px; }
+
+/* ── Employee of the Month ───────────────────────────────────────────────
+   This is the one card on the dashboard that needs a person to DO
+   something (cast a vote) rather than just read a number — so unlike every
+   other card here, it's allowed a fill and an accent, to pull the eye
+   before the vote window closes. */
+.eotmCard {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--mantine-color-yellow-5);
+  background: linear-gradient(135deg, var(--mantine-color-yellow-light) 0%, var(--mantine-color-body) 60%);
+}
+
+.eotmCard::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--mantine-color-yellow-6);
+}
+
+/* The "new, go vote" dot — a heartbeat, not a strobe. */
+.eotmPulseDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mantine-color-red-6);
+  animation: eotmPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes eotmPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(1.5); }
+}
