@@ -1627,12 +1627,24 @@ class _EmployeeOfMonthCard extends ConsumerWidget {
     return current.maybeWhen(
       data: (eotm) {
         if (eotm == null) return const SizedBox.shrink();
+        final theme = Theme.of(context);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionHeader('Employee of the Month — ${_monthLabel(eotm.cycle.periodMonthKey)}'),
             const SizedBox(height: Spacing.sm),
+            if (eotm.isOpenNow)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Spacing.sm),
+                child: Text(
+                  '${eotm.turnout.voted} wamepiga kura · ${eotm.turnout.remaining} bado',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             if (eotm.canVoteNow)
               _EotmVoteForm(cycleId: eotm.cycle.id, candidates: eotm.candidates)
             else
@@ -1757,60 +1769,87 @@ class _EotmResultsCard extends StatelessWidget {
     final theme = Theme.of(context);
     final cycle = eotm.cycle;
 
+    NamedUser? myVoteCandidate;
+    for (final c in eotm.candidates) {
+      if (c.id == eotm.myVote?.candidateId) {
+        myVoteCandidate = c;
+        break;
+      }
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(Spacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (eotm.hasVoted && eotm.isOpenNow)
+            // Still open: only this person's own vote is shown — the
+            // per-candidate breakdown is withheld by the server until the
+            // cycle auto-tallies, so people can't vote tactically.
+            if (eotm.hasVoted && eotm.isOpenNow) ...[
               Padding(
-                padding: const EdgeInsets.only(bottom: Spacing.sm),
+                padding: const EdgeInsets.only(bottom: 2),
                 child: Text('Umepiga kura tayari — asante!', style: theme.textTheme.bodySmall),
               ),
-            if (cycle.isClosed && cycle.winner != null)
+              if (myVoteCandidate != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text('Umempigia kura: ${myVoteCandidate.name}', style: theme.textTheme.bodySmall),
+                ),
               Padding(
                 padding: const EdgeInsets.only(bottom: Spacing.sm),
-                child: Row(
-                  children: [
-                    Icon(Icons.emoji_events_outlined, color: Colors.amber.shade700, size: 20),
-                    const SizedBox(width: Spacing.sm),
-                    Expanded(
-                      child: Text(
-                        'Mshindi: ${cycle.winner!.name} (${cycle.winnerVoteCount} kura)'
-                        '${cycle.prizeAmount != null ? ' — ${Formatting.currency(cycle.prizeAmount)}' : ''}',
-                        style: theme.textTheme.titleSmall,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Matokeo ya wafanyakazi wote yataonekana hapa mara kura zitakapofungwa na kuhesabiwa kiotomatiki.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               ),
-            if (cycle.isClosed && cycle.winner == null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Spacing.sm),
-                child: Text('Hakuna mshindi — hakuna kura zilizopigwa.', style: theme.textTheme.bodySmall),
-              ),
-            Text(
-              'Matokeo ya kura:',
-              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: Spacing.xs),
-            for (final r in eotm.results)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis)),
-                    Text(
-                      '${r.votes}',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: r.votes > 0 ? FontWeight.w600 : FontWeight.w400,
+            ],
+
+            if (cycle.isClosed) ...[
+              if (cycle.winner != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Spacing.sm),
+                  child: Row(
+                    children: [
+                      Icon(Icons.emoji_events_outlined, color: Colors.amber.shade700, size: 20),
+                      const SizedBox(width: Spacing.sm),
+                      Expanded(
+                        child: Text(
+                          'Mshindi: ${cycle.winner!.name} (${cycle.winnerVoteCount} kura)'
+                          '${cycle.prizeAmount != null ? ' — ${Formatting.currency(cycle.prizeAmount)}' : ''}',
+                          style: theme.textTheme.titleSmall,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Spacing.sm),
+                  child: Text('Hakuna mshindi — hakuna kura zilizopigwa.', style: theme.textTheme.bodySmall),
                 ),
+              Text(
+                'Matokeo ya kura:',
+                style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
+              const SizedBox(height: Spacing.xs),
+              for (final r in eotm.results)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(child: Text(r.name, overflow: TextOverflow.ellipsis)),
+                      Text(
+                        '${r.votes}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: r.votes > 0 ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ],
         ),
       ),

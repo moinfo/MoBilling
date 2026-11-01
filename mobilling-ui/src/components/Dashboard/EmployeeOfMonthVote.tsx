@@ -39,9 +39,10 @@ export default function EmployeeOfMonthVote() {
 
   if (!current) return null;
 
-  const { cycle, is_open_now, has_voted, candidates, results } = current;
+  const { cycle, is_open_now, has_voted, candidates, turnout, results, my_vote } = current;
   const prettyPeriod = dayjs(`${cycle.period_month_key}-01`).format('MMMM YYYY');
   const canVoteNow = is_open_now && !has_voted;
+  const myVoteCandidate = my_vote ? candidates.find((c) => c.id === my_vote.candidate_id) : null;
 
   return (
     <Box>
@@ -66,6 +67,13 @@ export default function EmployeeOfMonthVote() {
               </Badge>
             )}
           </Group>
+
+          {is_open_now && (
+            <Group gap={6}>
+              <Badge color="teal" variant="light" size="sm">{turnout.voted} wamepiga kura</Badge>
+              <Badge color="gray" variant="light" size="sm">{turnout.remaining} bado</Badge>
+            </Group>
+          )}
 
           {canVoteNow ? (
             <Stack gap="sm">
@@ -105,38 +113,53 @@ export default function EmployeeOfMonthVote() {
           ) : (
             <Stack gap="xs">
               {has_voted && is_open_now && (
-                <Text size="sm" c="dimmed">Umepiga kura tayari kwa mzunguko huu — asante!</Text>
-              )}
-              {cycle.status === 'closed' && cycle.winner && (
-                <Group gap="xs">
-                  <IconTrophy size={18} color="var(--mantine-color-yellow-6)" />
-                  <Text size="sm" fw={600}>
-                    Mshindi: {cycle.winner.name} ({cycle.winner_vote_count} kura)
-                    {cycle.prize_amount ? ` — Zawadi TZS ${Number(cycle.prize_amount).toLocaleString()}` : ''}
+                <Stack gap={4}>
+                  <Text size="sm" c="dimmed">Umepiga kura tayari kwa mzunguko huu — asante!</Text>
+                  {myVoteCandidate && (
+                    <Text size="sm">
+                      Umempigia kura: <strong>{myVoteCandidate.name}</strong>
+                    </Text>
+                  )}
+                  <Text size="xs" c="dimmed">
+                    Matokeo ya kura wa wafanyakazi wote yataonekana hapa mara kura zitakapofungwa na kuhesabiwa kiotomatiki
+                    tarehe {dayjs(cycle.voting_closes_on).format('D MMMM')}.
                   </Text>
-                </Group>
-              )}
-              {cycle.status === 'closed' && !cycle.winner && (
-                <Text size="sm" c="dimmed">Hakuna mshindi — hakuna kura zilizopigwa.</Text>
+                </Stack>
               )}
 
-              <Text size="xs" c="dimmed" mt="xs">Matokeo ya kura — wafanyakazi wote:</Text>
-              <Table.ScrollContainer minWidth={280}>
-                <Table striped>
-                  <Table.Tbody>
-                    {results.map((r) => (
-                      <Table.Tr key={r.user_id}>
-                        <Table.Td>{r.name}</Table.Td>
-                        <Table.Td style={{ textAlign: 'right' }}>
-                          <Badge size="sm" variant={r.votes > 0 ? 'light' : 'outline'} color={r.votes > 0 ? 'blue' : 'gray'}>
-                            {r.votes} kura
-                          </Badge>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
+              {cycle.status === 'closed' && (
+                <>
+                  {cycle.winner ? (
+                    <Group gap="xs">
+                      <IconTrophy size={18} color="var(--mantine-color-yellow-6)" />
+                      <Text size="sm" fw={600}>
+                        Mshindi: {cycle.winner.name} ({cycle.winner_vote_count} kura)
+                        {cycle.prize_amount ? ` — Zawadi TZS ${Number(cycle.prize_amount).toLocaleString()}` : ''}
+                      </Text>
+                    </Group>
+                  ) : (
+                    <Text size="sm" c="dimmed">Hakuna mshindi — hakuna kura zilizopigwa.</Text>
+                  )}
+
+                  <Text size="xs" c="dimmed" mt="xs">Matokeo ya kura — wafanyakazi wote:</Text>
+                  <Table.ScrollContainer minWidth={280}>
+                    <Table striped>
+                      <Table.Tbody>
+                        {(results ?? []).map((r) => (
+                          <Table.Tr key={r.user_id}>
+                            <Table.Td>{r.name}</Table.Td>
+                            <Table.Td style={{ textAlign: 'right' }}>
+                              <Badge size="sm" variant={r.votes > 0 ? 'light' : 'outline'} color={r.votes > 0 ? 'blue' : 'gray'}>
+                                {r.votes} kura
+                              </Badge>
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>
+                </>
+              )}
             </Stack>
           )}
         </Stack>

@@ -19,13 +19,21 @@ export interface EotmResultRow {
   votes: number;
 }
 
+export interface EotmTurnout {
+  voted: number;
+  total: number;
+  remaining: number;
+}
+
 export interface EotmCurrent {
   cycle: EotmCycle;
   is_open_now: boolean;
   has_voted: boolean;
   my_vote: { candidate_id: string; reason: string } | null;
   candidates: { id: string; name: string }[];
-  results: EotmResultRow[];
+  turnout: EotmTurnout;
+  /** Withheld (null) while the cycle is still open — only released once it's auto-tallied/closed. */
+  results: EotmResultRow[] | null;
 }
 
 export interface EotmVoteDetail {

@@ -60,6 +60,20 @@ class EotmResultRow {
       );
 }
 
+class EotmTurnout {
+  const EotmTurnout({required this.voted, required this.total, required this.remaining});
+
+  final int voted;
+  final int total;
+  final int remaining;
+
+  factory EotmTurnout.fromJson(Map<String, dynamic> json) => EotmTurnout(
+        voted: json.count('voted'),
+        total: json.count('total'),
+        remaining: json.count('remaining'),
+      );
+}
+
 class EotmMyVote {
   const EotmMyVote({required this.candidateId, required this.reason});
 
@@ -79,6 +93,7 @@ class EotmCurrent {
     required this.hasVoted,
     required this.myVote,
     required this.candidates,
+    required this.turnout,
     required this.results,
   });
 
@@ -87,6 +102,11 @@ class EotmCurrent {
   final bool hasVoted;
   final EotmMyVote? myVote;
   final List<NamedUser> candidates;
+  final EotmTurnout turnout;
+
+  /// Withheld by the server (empty) while the cycle is still open — only
+  /// meaningful once `cycle.isClosed`. Never use `results.isEmpty` to decide
+  /// whether to show it; always gate on `cycle.isClosed`.
   final List<EotmResultRow> results;
 
   /// Only true while the window is open AND this person hasn't voted yet —
@@ -100,6 +120,7 @@ class EotmCurrent {
         hasVoted: json.flag('has_voted'),
         myVote: json.object('my_vote') == null ? null : EotmMyVote.fromJson(json.object('my_vote')!),
         candidates: json.list('candidates', NamedUser.fromJson),
+        turnout: EotmTurnout.fromJson(json.object('turnout') ?? const {}),
         results: json.list('results', EotmResultRow.fromJson),
       );
 }

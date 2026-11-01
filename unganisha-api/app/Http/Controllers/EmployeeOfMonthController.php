@@ -19,8 +19,11 @@ class EmployeeOfMonthController extends Controller
      * The voting widget's one call: the open cycle (if any — otherwise the
      * most recently closed one, so there's always something to show), the
      * candidate list (every active employee except the caller), whether the
-     * caller already voted, and vote-count-only results visible to everyone
-     * (never the reasons — those stay admin-only, see votes()).
+     * caller already voted, and turnout (how many have voted so far, out of
+     * how many are eligible). The per-candidate breakdown (`results`) is
+     * withheld while the cycle is still `open` — showing it live would let
+     * people see who's ahead and vote tactically — and only released once
+     * the cycle is automatically tallied/closed.
      */
     public function current(Request $request)
     {
@@ -47,7 +50,8 @@ class EmployeeOfMonthController extends Controller
             'has_voted' => (bool) $myVote,
             'my_vote' => $myVote ? ['candidate_id' => $myVote->candidate_id, 'reason' => $myVote->reason] : null,
             'candidates' => $candidates,
-            'results' => $this->resultsFor($cycle, $tenantId),
+            'turnout' => $this->turnoutFor($cycle, $tenantId),
+            'results' => $cycle->status === 'closed' ? $this->resultsFor($cycle, $tenantId) : null,
         ]]);
     }
 
@@ -148,6 +152,15 @@ class EmployeeOfMonthController extends Controller
             'winner_commission_id' => $cycle->winner_commission_id,
             'tallied_at' => $cycle->tallied_at?->toIso8601String(),
         ];
+    }
+
+    /** How many eligible (active) staff have voted so far, out of how many are eligible. */
+    private function turnoutFor(EmployeeOfMonthCycle $cycle, string $tenantId): array
+    {
+        $total = User::where('tenant_id', $tenantId)->where('is_active', true)->count();
+        $voted = EmployeeOfMonthVote::where('cycle_id', $cycle->id)->count();
+
+        return ['voted' => $voted, 'total' => $total, 'remaining' => max(0, $total - $voted)];
     }
 
     /** Every active employee, 0 votes included — "list ya wafanyakazi wote na kura zao", not just those who got any. */
