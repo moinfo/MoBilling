@@ -53,9 +53,21 @@ class AttendanceUpserter
         $ins  = $all->filter(fn ($t) => $t->lt($split));
         $outs = $all->filter(fn ($t) => $t->gte($split));
 
+        // Guard against a bogus pre-dawn punch (a stray access event in a
+        // device export, e.g. iVMS-4200) stealing the check-in slot from the
+        // real one: prefer the earliest punch within a plausible morning
+        // window (configured check-in time minus 3h) over anything earlier
+        // still. Falls back to plain earliest-overall when nothing falls in
+        // that window — better to use what we have than silently mark the
+        // day absent.
+        $settings = AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenantId)->first();
+        $floor = $settings?->check_in_time ? Carbon::parse($date . ' ' . $settings->check_in_time)->subHours(3) : null;
+        $plausibleIns = $floor ? $ins->filter(fn ($t) => $t->gte($floor)) : $ins;
+        $checkIn = $plausibleIns->isNotEmpty() ? $plausibleIns->first() : $ins->first();
+
         $att->tenant_id ??= $tenantId;
-        $att->check_in_at  = $ins->first();    // earliest morning punch (null = no check-in)
-        $att->check_out_at = $outs->last();    // latest evening punch (null = forgot to punch out)
+        $att->check_in_at  = $checkIn;          // earliest plausible morning punch (null = no check-in)
+        $att->check_out_at = $outs->last();     // latest evening punch (null = forgot to punch out)
         $att->save();
 
         // Device/sheet data often lands AFTER the nightly penalty run already
