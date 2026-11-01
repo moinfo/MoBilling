@@ -89,8 +89,10 @@ export default function Dashboard() {
           penalties={can('dashboard.my_report_deductions') ? summary?.staff_penalties : null}
         />
       )}
-      <MyPayroll />
-      <EmployeeOfMonthVote />
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+        <MyPayroll />
+        <EmployeeOfMonthVote />
+      </SimpleGrid>
 
       {summary && (
         <>

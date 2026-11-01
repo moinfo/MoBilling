@@ -170,9 +170,9 @@
   border-top: 1px solid var(--mantine-color-default-border);
 }
 
-/* The payslip stands apart from the "Your month" band on purpose: it describes
-   a closed period (last month's pay), not the running one. */
-.payslip { max-width: 460px; }
+/* The payslip now sits in a two-up row with the Employee of the Month card
+   (see Dashboard.tsx) — no max-width, so it fills its grid column like its
+   row-mate does, instead of floating at a fixed width inside a wider cell. */
 
 /* ── Employee of the Month ───────────────────────────────────────────────
    This is the one card on the dashboard that needs a person to DO
