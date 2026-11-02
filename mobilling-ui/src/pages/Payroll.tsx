@@ -1914,6 +1914,7 @@ function MyPayslipsTab() {
               <Table.Th>#</Table.Th>
               <Table.Th>Month</Table.Th>
               <Table.Th>Status</Table.Th>
+              <Table.Th>Commission</Table.Th>
               <Table.Th>Gross Pay</Table.Th>
               {dedNames.map((name) => <Table.Th key={name}>{name}</Table.Th>)}
               <Table.Th>Net Pay</Table.Th>
@@ -1928,6 +1929,7 @@ function MyPayslipsTab() {
                   <Table.Td>{i + 1}</Table.Td>
                   <Table.Td>{p.payroll_run?.month_key ?? '—'}</Table.Td>
                   <Table.Td><Badge size="sm" color={finalized ? 'green' : 'yellow'}>{finalized ? 'Finalized' : 'Draft'}</Badge></Table.Td>
+                  <Table.Td c={num(p.commissions_total) ? undefined : 'dimmed'}>{num(p.commissions_total) ? formatCurrency(p.commissions_total) : '—'}</Table.Td>
                   <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
                   {dedNames.map((name) => (
                     <Table.Td key={name}>{dedMaps[i][name] ? formatCurrency(dedMaps[i][name]) : '—'}</Table.Td>
@@ -1951,6 +1953,7 @@ function MyPayslipsTab() {
               <Table.Th />
               <Table.Th>Total</Table.Th>
               <Table.Th />
+              <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.commissions_total), 0))}</Table.Th>
               <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
               {dedNames.map((name) => (
                 <Table.Th key={name}>{formatCurrency(dedMaps.reduce((sum, m) => sum + (m[name] ?? 0), 0))}</Table.Th>

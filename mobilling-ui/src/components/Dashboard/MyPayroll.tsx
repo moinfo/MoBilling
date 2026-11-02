@@ -104,6 +104,10 @@ export default function MyPayroll() {
         <div className={classes.ledger}>
           <Line label="Gross pay" value={formatCurrency(gross)} />
 
+          {num(p.commissions_total) > 0 && (
+            <Line label="Commission (included above)" value={formatCurrency(num(p.commissions_total))} tone="keep" />
+          )}
+
           {items.map((it, idx) => (
             <Line key={idx} label={it.name} value={`−${formatCurrency(it.amount)}`} tone="lost" />
           ))}
