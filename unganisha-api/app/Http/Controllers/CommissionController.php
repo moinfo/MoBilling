@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Commission;
+use App\Models\Payslip;
 use App\Models\PayrollRun;
+use App\Services\PayrollCalculationService;
 use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -26,7 +28,7 @@ class CommissionController extends Controller
         return response()->json(['data' => $query->get()]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, PayrollCalculationService $calculator)
     {
         $this->authorizePermission('payroll.manage');
         $tenantId = auth()->user()->tenant_id;
@@ -39,9 +41,8 @@ class CommissionController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        $finalized = PayrollRun::where('tenant_id', $tenantId)
-            ->where('month_key', $data['payout_month_key'])->where('status', 'finalized')->exists();
-        if ($finalized) {
+        $run = PayrollRun::where('tenant_id', $tenantId)->where('month_key', $data['payout_month_key'])->first();
+        if ($run && $run->status === 'finalized') {
             return response()->json(['message' => "Payroll for {$data['payout_month_key']} is already finalized — pick a later payout month."], 422);
         }
 
@@ -50,6 +51,20 @@ class CommissionController extends Controller
         $data['created_by'] = auth()->id();
 
         $commission = Commission::create($data);
+
+        // A draft payslip for this employee/month is a frozen snapshot taken
+        // at "generate" time — it won't know about a commission added after
+        // that, so refresh it now instead of leaving it to look un-applied
+        // until someone happens to hit the per-payslip "Recompute" button.
+        if ($run) {
+            $payslip = Payslip::where('payroll_run_id', $run->id)->where('user_id', $data['user_id'])->first();
+            if ($payslip) {
+                $result = $calculator->computeForUser($commission->user, $data['payout_month_key']);
+                if ($result !== null) {
+                    $payslip->update($result);
+                }
+            }
+        }
 
         return response()->json(['data' => $commission->load('user:id,name')], 201);
     }
@@ -64,7 +79,7 @@ class CommissionController extends Controller
         return response()->json(['data' => $commission->load('user:id,name')]);
     }
 
-    public function cancel(Commission $commission)
+    public function cancel(Commission $commission, PayrollCalculationService $calculator)
     {
         $this->authorizePermission('payroll.manage');
         if ($commission->tenant_id !== auth()->user()->tenant_id) {
@@ -75,6 +90,22 @@ class CommissionController extends Controller
         }
 
         $commission->update(['status' => 'cancelled']);
+
+        // Mirror store(): a draft payslip may have already been computed
+        // with this commission folded into gross — drop it from the
+        // snapshot now rather than leaving a cancelled commission's amount
+        // sitting in someone's pay until the next unrelated recompute.
+        $run = PayrollRun::where('tenant_id', $commission->tenant_id)
+            ->where('month_key', $commission->payout_month_key)->first();
+        if ($run && $run->status !== 'finalized') {
+            $payslip = Payslip::where('payroll_run_id', $run->id)->where('user_id', $commission->user_id)->first();
+            if ($payslip) {
+                $result = $calculator->computeForUser($commission->user, $commission->payout_month_key);
+                if ($result !== null) {
+                    $payslip->update($result);
+                }
+            }
+        }
 
         return response()->json(['data' => $commission]);
     }
