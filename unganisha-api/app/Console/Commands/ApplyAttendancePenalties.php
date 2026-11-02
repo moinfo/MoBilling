@@ -46,12 +46,18 @@ class ApplyAttendancePenalties extends Command
 
             // Start the day AFTER attendance was enabled — never backfill
             // absences for days before the feature existed (or its launch day).
-            $monthStart = $now->copy()->startOfMonth();
+            // Bounded to the last 60 days rather than just the current
+            // calendar month: a device/CSV import that lands late (e.g. after
+            // the month has already rolled over) still gets its penalties
+            // auto-charged on the next nightly run, instead of becoming
+            // permanently unchargeable the moment the clock crosses into a
+            // new month.
+            $lookbackFloor = $now->copy()->subDays(60)->startOfDay();
             $begin = $s->penalties_from
                 ? $s->penalties_from->copy()->startOfDay()
-                : ($s->created_at ? $s->created_at->copy()->addDay()->startOfDay() : $monthStart);
-            if ($begin->lt($monthStart)) {
-                $begin = $monthStart;
+                : ($s->created_at ? $s->created_at->copy()->addDay()->startOfDay() : $lookbackFloor);
+            if ($begin->lt($lookbackFloor)) {
+                $begin = $lookbackFloor;
             }
             for ($d = $begin->copy(); $d->lte($now); $d->addDay()) {
                 if (!in_array($d->dayOfWeekIso, $workDays) || $holidays->has($d->toDateString())) {
