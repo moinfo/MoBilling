@@ -781,7 +781,7 @@ class DomainController extends Controller
      * idempotency guard) and re-dispatches the same job DocumentObserver
      * would have on payment.
      */
-    public function retry(Domain $domain)
+    public function retry(Request $request, Domain $domain)
     {
         if ($domain->status !== 'failed') {
             return response()->json(['message' => 'Only a failed domain action can be retried.'], 422);
@@ -792,7 +792,17 @@ class DomainController extends Controller
             return response()->json(['message' => 'No pending action recorded for this domain — nothing to retry.'], 422);
         }
 
-        $domain->update(['status' => 'pending']);
+        // A failed transfer most often means the stored EPP/auth code was
+        // wrong — without this, retry() just resubmits the same bad code and
+        // fails the same way again. Optional: most retries (register/renew)
+        // don't need it.
+        $data = $request->validate(['auth_info' => 'nullable|string|max:255']);
+        if ($pendingAction === 'transfer' && !empty($data['auth_info'])) {
+            $domain->epp_auth_info = $data['auth_info'];
+        }
+
+        $domain->status = 'pending';
+        $domain->save();
 
         match ($pendingAction) {
             'register' => \App\Jobs\Domains\RegisterDomainJob::dispatch($domain),

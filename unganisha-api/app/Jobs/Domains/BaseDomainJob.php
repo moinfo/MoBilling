@@ -36,6 +36,16 @@ abstract class BaseDomainJob implements ShouldQueue
         } catch (\Throwable $e) {
             $domain->update(['status' => 'failed']);
             Log::error(static::class . " failed for domain {$domain->name}", ['error' => $e->getMessage()]);
+
+            try {
+                $client = \App\Models\Client::withoutGlobalScopes()->find($domain->client_id);
+                if ($client && ($client->email || $client->phone)) {
+                    $action = $domain->meta['pending_action'] ?? 'register';
+                    $client->notifyNow(new \App\Notifications\DomainActionFailedNotification($domain, $action, $e->getMessage()));
+                }
+            } catch (\Throwable $notifyError) {
+                Log::warning("Could not notify client of domain failure for {$domain->name}: {$notifyError->getMessage()}");
+            }
         }
     }
 

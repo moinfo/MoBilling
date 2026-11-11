@@ -49,6 +49,8 @@ export default function DomainDetails() {
   const [authGenerated, setAuthGenerated] = useState(false);
   const [authSentInfo, setAuthSentInfo] = useState<{ message: string; hint: string | null } | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [retryTransferOpen, setRetryTransferOpen] = useState(false);
+  const [retryAuthInfo, setRetryAuthInfo] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['domain', id],
@@ -85,12 +87,14 @@ export default function DomainDetails() {
   });
 
   const retryMutation = useMutation({
-    mutationFn: () => retryDomain(id!),
+    mutationFn: (authInfo?: string) => retryDomain(id!, authInfo),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['domain', id] });
       qc.invalidateQueries({ queryKey: ['domains'] });
       qc.invalidateQueries({ queryKey: ['domain-stats'] });
       notifications.show({ message: res.data.message, color: 'teal' });
+      setRetryTransferOpen(false);
+      setRetryAuthInfo('');
     },
     onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not retry.', color: 'red' }),
   });
@@ -183,9 +187,15 @@ export default function DomainDetails() {
               Mark as Registered
             </Button>
           )}
-          {can('domains.create') && d.status === 'failed' && meta.pending_action && (
+          {can('domains.create') && d.status === 'failed' && meta.pending_action === 'transfer' && (
             <Button size="xs" variant="light" color="red" leftSection={<IconRotateClockwise size={14} />}
-              loading={retryMutation.isPending} onClick={() => retryMutation.mutate()}>
+              onClick={() => setRetryTransferOpen(true)}>
+              Retry transfer
+            </Button>
+          )}
+          {can('domains.create') && d.status === 'failed' && meta.pending_action && meta.pending_action !== 'transfer' && (
+            <Button size="xs" variant="light" color="red" leftSection={<IconRotateClockwise size={14} />}
+              loading={retryMutation.isPending} onClick={() => retryMutation.mutate(undefined)}>
               Retry {meta.pending_action}
             </Button>
           )}
@@ -382,6 +392,24 @@ export default function DomainDetails() {
       {ncRegisterOpen && <NameComRegisterModal domainId={d.id} domainName={d.name} onClose={() => setNcRegisterOpen(false)} />}
       <Modal opened={confirmManualOpen} onClose={() => setConfirmManualOpen(false)} title={`Mark ${d.name} as registered`} centered>
         <StaffConfirmManualForm domainId={d.id} onDone={() => setConfirmManualOpen(false)} />
+      </Modal>
+
+      <Modal opened={retryTransferOpen} onClose={() => setRetryTransferOpen(false)} title={`Retry transfer — ${d.name}`} centered>
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">
+            The last attempt was rejected by the registry, most often because the transfer authorization (EPP) code
+            was wrong. Leave this blank to retry with the same code, or paste a corrected one from the client.
+          </Text>
+          <TextInput
+            label="Transfer authorization (EPP) code"
+            placeholder="Leave blank to reuse the existing code"
+            value={retryAuthInfo}
+            onChange={(e) => setRetryAuthInfo(e.currentTarget.value)}
+          />
+          <Button loading={retryMutation.isPending} onClick={() => retryMutation.mutate(retryAuthInfo.trim() || undefined)}>
+            Retry transfer
+          </Button>
+        </Stack>
       </Modal>
     </Stack>
   );

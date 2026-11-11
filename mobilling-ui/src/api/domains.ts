@@ -261,8 +261,8 @@ export const setDomainAutoRenew = (id: string, enabled: boolean) =>
 export const renewDomain = (id: string, years: number) =>
   api.post(`/domains/${id}/renew`, { years });
 
-export const retryDomain = (id: string) =>
-  api.post<{ data: DomainRecord; message: string }>(`/domains/${id}/retry`);
+export const retryDomain = (id: string, authInfo?: string) =>
+  api.post<{ data: DomainRecord; message: string }>(`/domains/${id}/retry`, authInfo ? { auth_info: authInfo } : {});
 
 /** Re-pulls status/expiry/nameserver-handle from the registry for one domain — for when a domain (e.g. added via "add existing") is missing data. */
 export const syncDomain = (id: string) =>
