@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, Select, Center, Loader, Alert, Button, Modal,
-  TextInput, PasswordInput, Radio, Checkbox, Tabs, ActionIcon, Drawer, NumberInput, CopyButton, Code, List, Tooltip, ScrollArea,
+  TextInput, PasswordInput, Radio, Checkbox, Tabs, ActionIcon, Drawer, NumberInput, CopyButton, Code, List, Tooltip, ScrollArea, Switch,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useDebouncedValue } from '@mantine/hooks';
@@ -725,12 +725,14 @@ function DomainsTab({ canManage, serverFilter, setServerFilter }: { canManage: b
   const allRows = data?.data?.data ?? [];
   const lastRefreshed = data?.data?.dns_last_refreshed ?? null;
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [unmappedOnly, setUnmappedOnly] = useState(false);
   const [autoMap, setAutoMap] = useState(false);
   const { data: srvData } = useQuery({ queryKey: ['linode-servers'], queryFn: getLinodeServers });
   const servers = srvData?.data?.data ?? [];
   const rows = useMemo(() => allRows.filter((d) =>
     (!serverFilter || d.dns?.servers.some((s) => s.id === serverFilter))
-    && (!statusFilter || (d.dns?.status ?? 'unknown') === statusFilter)), [allRows, serverFilter, statusFilter]);
+    && (!statusFilter || (d.dns?.status ?? 'unknown') === statusFilter)
+    && (!unmappedOnly || !d.client_id)), [allRows, serverFilter, statusFilter, unmappedOnly]);
   const suggestions = allRows.filter((d) => !d.client_id && d.suggested_client);
   const check = useMutation({
     mutationFn: (id: string) => checkLinodeNameservers(id),
@@ -752,6 +754,7 @@ function DomainsTab({ canManage, serverFilter, setServerFilter }: { canManage: b
         {canManage && suggestions.length > 0 && <Button variant="light" color="teal" leftSection={<IconWand size={16} />} onClick={() => setAutoMap(true)}>Auto-map suggested clients ({suggestions.length})</Button>}
         <Select placeholder="Filter by server" clearable size="sm" data={servers.map((s) => ({ value: s.id, label: `${s.label} (${s.domain_count ?? 0})` }))} value={serverFilter} onChange={setServerFilter} />
         <Select placeholder="Filter by DNS status" clearable size="sm" data={DNS_STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+        <Switch label="Unmapped only" checked={unmappedOnly} onChange={(e) => setUnmappedOnly(e.currentTarget.checked)} />
         <Text size="xs" c="dimmed">DNS mapping last refreshed: {fmt(lastRefreshed)}</Text>
       </Group>
       {isLoading ? <Center><Loader /></Center> : isError ? <Alert color="red">{errMsg(error)}</Alert> : !rows.length ? (
