@@ -959,6 +959,15 @@ class HostingAccountController extends Controller
                 ->orWhere('cpanel_username', 'like', "%{$s}%"));
         }
 
+        // "Moved to Linode" filter must narrow the query BEFORE pagination —
+        // otherwise a flagged row on page 3 would never surface, since the
+        // flag is normally computed only across the current page's rows.
+        if ($request->boolean('linode_flagged')) {
+            $candidateNames = (clone $query)->pluck('domain')->filter()->unique()->values();
+            $flagged = $this->linodeFlaggedDomains($candidateNames);
+            $query->whereIn('domain', $candidateNames->filter(fn ($n) => $flagged->has(strtolower($n)))->values());
+        }
+
         $paginated = $query->paginate($request->get('per_page', 20));
 
         // Domain registration expiry — no FK to `domains`, matched by name
@@ -978,26 +987,7 @@ class HostingAccountController extends Controller
             ->unique('client_subscription_id')
             ->keyBy('client_subscription_id');
 
-        // A domain's Linode-hosted DNS zone is a LinodeResource (type='domain',
-        // label = lowercased domain name) — once its A record resolves to one
-        // of the tenant's own Linode instances, meta.dns.points_to_labels is
-        // populated. On its own this over-flags: a zone can be pre-created in
-        // Linode's DNS manager (with records already pointing at an instance)
-        // well before the domain is actually delegated there — confirmed live
-        // for robinashop.co.tz, whose nsset_handle is still the shared
-        // "NS-MOINFO" handle even though a stale Linode zone exists for it. So
-        // this only counts when the domain's OWN nsset isn't the
-        // Moinfotech-managed shared handle (NS-MOINFO / NS-MOINFO2) — i.e. it
-        // has genuinely been delegated away from our own nameservers.
-        $lowerNames = $domainNames->map(fn ($n) => strtolower($n));
-        $nssetByLowerName = Domain::whereIn('name', $domainNames)->get(['name', 'nsset_handle'])
-            ->mapWithKeys(fn ($d) => [strtolower($d->name) => $d->nsset_handle]);
-        $linodePointsTo = \App\Models\LinodeResource::where('type', 'domain')
-            ->whereIn('label', $lowerNames)
-            ->get(['label', 'meta'])
-            ->mapWithKeys(fn ($r) => [$r->label => ($r->meta ?? [])['dns']['points_to_labels'] ?? []])
-            ->filter(fn ($labels) => !empty($labels))
-            ->filter(fn ($labels, $label) => !str_starts_with((string) $nssetByLowerName->get($label), 'NS-MOINFO'));
+        $linodePointsTo = $this->linodeFlaggedDomains($domainNames);
 
         $paginated->getCollection()->transform(function ($account) use ($domainExpiry, $latestLogBySub, $linodePointsTo) {
             $account->domain_expires_at = $domainExpiry->get($account->domain)?->toDateString();
@@ -1013,6 +1003,44 @@ class HostingAccountController extends Controller
         });
 
         return response()->json(['data' => $paginated]);
+    }
+
+    /**
+     * Domains whose Linode-hosted DNS zone (a LinodeResource, type='domain',
+     * label = lowercased domain name) resolves to a Linode instance that is
+     * itself billed to a specific client (client_id set) — i.e. a dedicated
+     * VPS someone is paying for, as opposed to the tenant's own shared WHM
+     * boxes (client_id NULL), which dozens of unrelated cPanel accounts
+     * legitimately resolve to because that's physically where cPanel hosting
+     * runs. Without this, every domain merely using Linode's nameserver
+     * service for DNS (common, unrelated to hosting location) would flag.
+     *
+     * Also excludes domains still on Moinfotech's own shared nsset
+     * (NS-MOINFO / NS-MOINFO2) even when a zone exists for them — confirmed
+     * live for robinashop.co.tz, which has a pre-created Linode zone
+     * pointing at an instance but hasn't actually been delegated away from
+     * our nameservers yet, so a zone alone over-flags.
+     *
+     * @param  \Illuminate\Support\Collection<int,string>  $domainNames
+     * @return \Illuminate\Support\Collection<string,array<string>> keyed by lowercased domain name
+     */
+    private function linodeFlaggedDomains($domainNames)
+    {
+        $lowerNames = $domainNames->map(fn ($n) => strtolower($n));
+        $nssetByLowerName = Domain::whereIn('name', $domainNames)->get(['name', 'nsset_handle'])
+            ->mapWithKeys(fn ($d) => [strtolower($d->name) => $d->nsset_handle]);
+
+        $clientOwnedInstanceLabels = \App\Models\LinodeResource::where('type', 'instance')
+            ->whereNotNull('client_id')->pluck('label');
+
+        return \App\Models\LinodeResource::where('type', 'domain')
+            ->whereIn('label', $lowerNames)
+            ->get(['label', 'meta'])
+            ->mapWithKeys(fn ($r) => [$r->label => array_values(array_intersect(
+                ($r->meta ?? [])['dns']['points_to_labels'] ?? [], $clientOwnedInstanceLabels->all(),
+            ))])
+            ->filter(fn ($labels) => !empty($labels))
+            ->filter(fn ($labels, $label) => !str_starts_with((string) $nssetByLowerName->get($label), 'NS-MOINFO'));
     }
 
     /** Manually provision the hosting account for a subscription. */

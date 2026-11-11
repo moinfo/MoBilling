@@ -158,6 +158,7 @@ export default function HostingAccounts() {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [search, setSearch] = useState('');
+  const [linodeFlaggedOnly, setLinodeFlaggedOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [logsFor, setLogsFor] = useState<HostingAccount | null>(null);
   const [pkgFor, setPkgFor] = useState<HostingAccount | null>(null);
@@ -168,6 +169,7 @@ export default function HostingAccounts() {
   const params: Record<string, string> = { page: String(page) };
   if (statusFilter) params.status = statusFilter;
   if (search) params.search = search;
+  if (linodeFlaggedOnly) params.linode_flagged = '1';
 
   const { data, isLoading } = useQuery({
     queryKey: ['hosting-accounts', params],
@@ -239,12 +241,23 @@ export default function HostingAccounts() {
             { value: 'terminated', label: 'Terminated' },
           ]}
         />
+        <Button
+          size="xs" variant={linodeFlaggedOnly ? 'filled' : 'light'} color="orange"
+          leftSection={<IconAlertTriangle size={14} />}
+          onClick={() => { setLinodeFlaggedOnly((v) => !v); setPage(1); }}
+        >
+          Moved to Linode
+        </Button>
       </Group>
 
       {isLoading ? (
         <Center py="xl"><Loader /></Center>
       ) : accounts.length === 0 ? (
-        <Center py="xl"><Text c="dimmed">No hosting accounts found.</Text></Center>
+        <Center py="xl">
+          <Text c="dimmed">
+            {linodeFlaggedOnly ? 'No hosting accounts flagged as moved to Linode.' : 'No hosting accounts found.'}
+          </Text>
+        </Center>
       ) : (
         <Paper withBorder radius="md">
           <Table.ScrollContainer minWidth={800}>
