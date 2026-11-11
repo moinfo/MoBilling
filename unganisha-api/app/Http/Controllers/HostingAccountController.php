@@ -978,8 +978,30 @@ class HostingAccountController extends Controller
             ->unique('client_subscription_id')
             ->keyBy('client_subscription_id');
 
-        $paginated->getCollection()->transform(function ($account) use ($domainExpiry, $latestLogBySub) {
+        // A domain's Linode-hosted DNS zone is a LinodeResource (type='domain',
+        // label = lowercased domain name) — once its A record resolves to one
+        // of the tenant's own Linode instances, meta.dns.points_to_labels is
+        // populated. On its own this over-flags: a zone can be pre-created in
+        // Linode's DNS manager (with records already pointing at an instance)
+        // well before the domain is actually delegated there — confirmed live
+        // for robinashop.co.tz, whose nsset_handle is still the shared
+        // "NS-MOINFO" handle even though a stale Linode zone exists for it. So
+        // this only counts when the domain's OWN nsset isn't the
+        // Moinfotech-managed shared handle (NS-MOINFO / NS-MOINFO2) — i.e. it
+        // has genuinely been delegated away from our own nameservers.
+        $lowerNames = $domainNames->map(fn ($n) => strtolower($n));
+        $nssetByLowerName = Domain::whereIn('name', $domainNames)->get(['name', 'nsset_handle'])
+            ->mapWithKeys(fn ($d) => [strtolower($d->name) => $d->nsset_handle]);
+        $linodePointsTo = \App\Models\LinodeResource::where('type', 'domain')
+            ->whereIn('label', $lowerNames)
+            ->get(['label', 'meta'])
+            ->mapWithKeys(fn ($r) => [$r->label => ($r->meta ?? [])['dns']['points_to_labels'] ?? []])
+            ->filter(fn ($labels) => !empty($labels))
+            ->filter(fn ($labels, $label) => !str_starts_with((string) $nssetByLowerName->get($label), 'NS-MOINFO'));
+
+        $paginated->getCollection()->transform(function ($account) use ($domainExpiry, $latestLogBySub, $linodePointsTo) {
             $account->domain_expires_at = $domainExpiry->get($account->domain)?->toDateString();
+            $account->linode_points_to = $linodePointsTo->get(strtolower($account->domain)) ?? [];
             $log = $account->subscription ? $latestLogBySub->get($account->subscription->id) : null;
             $account->latest_invoice = $log?->document ? [
                 'id'              => $log->document->id,

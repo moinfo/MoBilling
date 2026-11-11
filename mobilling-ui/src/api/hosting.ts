@@ -37,6 +37,8 @@ export interface HostingAccount {
   domain_expires_at: string | null;
   latest_invoice: { id: string; document_number: string; status: string; date: string | null } | null;
   created_at: string;
+  /** Linode instance label(s) this domain's DNS currently resolves to, if any — a non-empty list means the site has likely moved off this cPanel account. */
+  linode_points_to: string[];
 }
 
 export interface ProvisioningLog {

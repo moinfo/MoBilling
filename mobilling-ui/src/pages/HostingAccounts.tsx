@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconExternalLink, IconPlayerPause, IconPlayerPlay,
-  IconTrash, IconPackage, IconHistory, IconWorld, IconReceipt2,
+  IconTrash, IconPackage, IconHistory, IconWorld, IconReceipt2, IconAlertTriangle,
 } from '@tabler/icons-react';
 import {
   getHostingAccounts, getHostingLogs, suspendHosting, unsuspendHosting,
@@ -272,9 +272,16 @@ export default function HostingAccounts() {
                   return (
                   <Table.Tr key={a.id}>
                     <Table.Td fw={500}>
-                      {manageUrl
-                        ? <Anchor size="sm" fw={600} onClick={() => navigate(manageUrl)}>{a.domain}</Anchor>
-                        : a.domain}
+                      <Group gap={6} wrap="nowrap">
+                        {manageUrl
+                          ? <Anchor size="sm" fw={600} onClick={() => navigate(manageUrl)}>{a.domain}</Anchor>
+                          : a.domain}
+                        {a.linode_points_to.length > 0 && (
+                          <Tooltip label={`DNS already points to Linode (${a.linode_points_to.join(', ')}) — this cPanel account is likely unused`}>
+                            <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" />
+                          </Tooltip>
+                        )}
+                      </Group>
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm">{a.subscription?.client?.name ?? '—'}</Text>
