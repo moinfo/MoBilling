@@ -29,6 +29,20 @@ class Document extends Model
         'collection_reviewed_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        // A zero-total document (e.g. a free domain transfer, a 100%-discounted
+        // invoice) has nothing left to collect, so it should never sit as
+        // "sent" waiting for a payment that will never arrive. Every invoice
+        // creation path across the app sets status => 'sent' the same way, so
+        // this one hook covers all of them instead of patching each site.
+        static::saving(function (Document $document) {
+            if ($document->status === 'sent' && (float) $document->total <= 0) {
+                $document->status = 'paid';
+            }
+        });
+    }
+
     public function collectionReviewedBy()
     {
         return $this->belongsTo(User::class, 'collection_reviewed_by');
