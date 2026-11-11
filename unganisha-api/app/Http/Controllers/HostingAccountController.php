@@ -963,9 +963,9 @@ class HostingAccountController extends Controller
         // otherwise a flagged row on page 3 would never surface, since the
         // flag is normally computed only across the current page's rows.
         if ($request->boolean('linode_flagged')) {
-            $candidateNames = (clone $query)->pluck('domain')->filter()->unique()->values();
-            $flagged = $this->linodeFlaggedDomains($candidateNames);
-            $query->whereIn('domain', $candidateNames->filter(fn ($n) => $flagged->has(strtolower($n)))->values());
+            $candidates = (clone $query)->with('server:id,hostname')->get(['id', 'domain', 'server_id']);
+            $flagged = $this->linodeFlaggedDomains($candidates);
+            $query->whereIn('domain', $candidates->pluck('domain')->filter(fn ($n) => $flagged->has(strtolower($n)))->unique()->values());
         }
 
         $paginated = $query->paginate($request->get('per_page', 20));
@@ -987,7 +987,7 @@ class HostingAccountController extends Controller
             ->unique('client_subscription_id')
             ->keyBy('client_subscription_id');
 
-        $linodePointsTo = $this->linodeFlaggedDomains($domainNames);
+        $linodePointsTo = $this->linodeFlaggedDomains($paginated->getCollection());
 
         $paginated->getCollection()->transform(function ($account) use ($domainExpiry, $latestLogBySub, $linodePointsTo) {
             $account->domain_expires_at = $domainExpiry->get($account->domain)?->toDateString();
@@ -1006,41 +1006,77 @@ class HostingAccountController extends Controller
     }
 
     /**
-     * Domains whose Linode-hosted DNS zone (a LinodeResource, type='domain',
-     * label = lowercased domain name) resolves to a Linode instance that is
-     * itself billed to a specific client (client_id set) — i.e. a dedicated
-     * VPS someone is paying for, as opposed to the tenant's own shared WHM
-     * boxes (client_id NULL), which dozens of unrelated cPanel accounts
-     * legitimately resolve to because that's physically where cPanel hosting
-     * runs. Without this, every domain merely using Linode's nameserver
-     * service for DNS (common, unrelated to hosting location) would flag.
+     * Domains whose live DNS no longer resolves to their OWN cPanel
+     * server's IP — the only thing that actually proves traffic isn't
+     * hitting cPanel anymore. A Linode instance's label/client_id is NOT a
+     * safe proxy for "our own shared infra, always ignore": confirmed live
+     * that "MoinfoTechMasterServer"/"MoinfoTechSlaveServer" (no client_id)
+     * are ordinary Linode boxes on Linode's own network, unrelated to the
+     * real WHM server (a different host entirely, e.g. ice.superdnssite.com
+     * on SingleHop) — they were already directly serving OTHER clients'
+     * sites outside any resold-VPS billing record. So any domain whose zone
+     * apex IP differs from its own cPanel server's resolved IP is flagged,
+     * regardless of which Linode instance (or none) it matches.
      *
-     * Also excludes domains still on Moinfotech's own shared nsset
-     * (NS-MOINFO / NS-MOINFO2) even when a zone exists for them — confirmed
-     * live for robinashop.co.tz, which has a pre-created Linode zone
-     * pointing at an instance but hasn't actually been delegated away from
-     * our nameservers yet, so a zone alone over-flags.
+     * Excludes domains still on Moinfotech's own shared nsset (NS-MOINFO /
+     * NS-MOINFO2): their real NS delegation is our own DNS, not Linode's, so
+     * a Linode-side zone's A records (if one even exists) are never queried
+     * by a real visitor and prove nothing either way — confirmed live for
+     * robinashop.co.tz, which has such a stale pre-created zone.
      *
-     * @param  \Illuminate\Support\Collection<int,string>  $domainNames
-     * @return \Illuminate\Support\Collection<string,array<string>> keyed by lowercased domain name
+     * @param  \Illuminate\Support\Collection<int,\App\Models\HostingAccount>  $accounts  must have `server` loaded
+     * @return \Illuminate\Support\Collection<string,array<string>> keyed by lowercased domain name, value = the zone's apex IPs
      */
-    private function linodeFlaggedDomains($domainNames)
+    private function linodeFlaggedDomains($accounts)
     {
+        $domainNames = $accounts->pluck('domain')->filter()->unique()->values();
         $lowerNames = $domainNames->map(fn ($n) => strtolower($n));
+
         $nssetByLowerName = Domain::whereIn('name', $domainNames)->get(['name', 'nsset_handle'])
             ->mapWithKeys(fn ($d) => [strtolower($d->name) => $d->nsset_handle]);
 
-        $clientOwnedInstanceLabels = \App\Models\LinodeResource::where('type', 'instance')
-            ->whereNotNull('client_id')->pluck('label');
-
-        return \App\Models\LinodeResource::where('type', 'domain')
+        $apexIpsByLowerName = \App\Models\LinodeResource::where('type', 'domain')
             ->whereIn('label', $lowerNames)
             ->get(['label', 'meta'])
-            ->mapWithKeys(fn ($r) => [$r->label => array_values(array_intersect(
-                ($r->meta ?? [])['dns']['points_to_labels'] ?? [], $clientOwnedInstanceLabels->all(),
-            ))])
-            ->filter(fn ($labels) => !empty($labels))
-            ->filter(fn ($labels, $label) => !str_starts_with((string) $nssetByLowerName->get($label), 'NS-MOINFO'));
+            ->mapWithKeys(fn ($r) => [$r->label => ($r->meta ?? [])['dns']['apex_ips'] ?? []])
+            ->filter(fn ($ips) => !empty($ips));
+
+        // Resolve each unique WHM server's own IP once (not stored on the
+        // Server row — only its hostname is), so dozens of accounts on the
+        // same server don't trigger a DNS lookup each.
+        $serverIpById = $accounts->pluck('server')->filter()->unique('id')
+            ->mapWithKeys(function ($server) {
+                $resolved = $server->hostname ? gethostbyname($server->hostname) : false;
+                return [$server->id => ($resolved && $resolved !== $server->hostname) ? $resolved : null];
+            });
+
+        // Label an IP with its Linode instance name when it is one, so the
+        // UI can say "points to IkumiTech" instead of a bare IP — purely
+        // cosmetic, falls back to the IP itself for anything else.
+        $labelByIp = \App\Models\LinodeResource::where('type', 'instance')->get(['label', 'ipv4'])
+            ->flatMap(fn ($r) => collect($r->ipv4 ?? [])->mapWithKeys(fn ($ip) => [$ip => $r->label]));
+
+        $flagged = collect();
+        foreach ($accounts as $account) {
+            $label = strtolower($account->domain);
+            if (str_starts_with((string) $nssetByLowerName->get($label), 'NS-MOINFO')) {
+                continue;
+            }
+
+            $apexIps = $apexIpsByLowerName->get($label);
+            $serverIp = $account->server_id ? $serverIpById->get($account->server_id) : null;
+            // Need both sides to compare — an unresolved server IP or a
+            // missing/empty zone proves nothing, so don't flag on a guess.
+            if (!$apexIps || !$serverIp) {
+                continue;
+            }
+
+            if (!in_array($serverIp, $apexIps, true)) {
+                $flagged->put($label, collect($apexIps)->map(fn ($ip) => $labelByIp->get($ip, $ip))->values()->all());
+            }
+        }
+
+        return $flagged;
     }
 
     /** Manually provision the hosting account for a subscription. */

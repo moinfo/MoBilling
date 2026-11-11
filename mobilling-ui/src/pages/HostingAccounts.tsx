@@ -290,7 +290,7 @@ export default function HostingAccounts() {
                           ? <Anchor size="sm" fw={600} onClick={() => navigate(manageUrl)}>{a.domain}</Anchor>
                           : a.domain}
                         {a.linode_points_to.length > 0 && (
-                          <Tooltip label={`DNS already points to Linode (${a.linode_points_to.join(', ')}) — this cPanel account is likely unused`}>
+                          <Tooltip label={`DNS no longer points to this cPanel's server — it resolves to ${a.linode_points_to.join(', ')} instead. This account is likely unused.`}>
                             <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" />
                           </Tooltip>
                         )}
