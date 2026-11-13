@@ -11,172 +11,174 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/Layout/ProtectedRoute';
 import AppLayout from './components/Layout/AppShell';
 import AdminShell from './components/Layout/AdminShell';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Install from './pages/Install';
-import LicenseAgreement from './pages/LicenseAgreement';
-import BuyLicense from './pages/BuyLicense';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import ImpersonateBridge from './pages/ImpersonateBridge';
-import Dashboard from './pages/Dashboard';
-import Landing from './pages/Landing';
-import Clients from './pages/Clients';
-import ClientProfile from './pages/ClientProfile';
-import PortalUsersAdmin from './pages/PortalUsersAdmin';
-import ProductServices from './pages/ProductServices';
-import ProductAddons from './pages/ProductAddons';
-import ConfigOptions from './pages/ConfigOptions';
-import Coupons from './pages/Coupons';
-import Quotations from './pages/Quotations';
-import Proformas from './pages/Proformas';
-import Invoices from './pages/Invoices';
-import Orders from './pages/Orders';
-import CreditNotes from './pages/CreditNotes';
-import BillCategories from './pages/BillCategories';
-import Bills from './pages/Bills';
-import PaymentsIn from './pages/PaymentsIn';
-import ReceivePayments from './pages/ReceivePayments';
-import NextBills from './pages/NextBills';
-import ClientSubscriptions from './pages/ClientSubscriptions';
-import RetainerBilling from './pages/RetainerBilling';
-import PaymentsOut from './pages/PaymentsOut';
-import Settings from './pages/Settings';
-import Users from './pages/Users';
-import Sessions from './pages/Sessions';
-import Roles from './pages/Roles';
-import AdminDashboard from './pages/admin/Dashboard';
-import Tenants from './pages/admin/Tenants';
-import WifiSettlements from './pages/admin/WifiSettlements';
-import TenantUsers from './pages/admin/TenantUsers';
-import EmailSettings from './pages/admin/EmailSettings';
-import SmsSettingsAdmin from './pages/admin/SmsSettings';
-import SmsPackagesAdmin from './pages/admin/SmsPackages';
-import LicensesAdmin from './pages/admin/Licenses';
-import LicensePlansAdmin from './pages/admin/LicensePlans';
-import ReleasesAdmin from './pages/admin/Releases';
-import SmsPurchasesAdmin from './pages/admin/SmsPurchases';
-import SubscriptionPlansAdmin from './pages/admin/SubscriptionPlans';
-import TenantProfile from './pages/admin/TenantProfile';
-import CurrenciesAdmin from './pages/admin/Currencies';
-import PlatformSettingsAdmin from './pages/admin/PlatformSettings';
-import PermissionsAdmin from './pages/admin/Permissions';
-import RolesAdmin from './pages/admin/Roles';
-import TemplatesAdmin from './pages/admin/Templates';
-import ExpenseCategories from './pages/ExpenseCategories';
-import Expenses from './pages/Expenses';
-import SystemRecords from './pages/SystemRecords';
-import SystemRecordExpenses from './pages/SystemRecordExpenses';
-import WifiRouters from './pages/WifiRouters';
-import WifiPlans from './pages/WifiPlans';
-import WifiVoucherPurchases from './pages/WifiVoucherPurchases';
-import WifiEarnings from './pages/WifiEarnings';
+
+// All page components are lazy-loaded so the main bundle stays small — every
+// route, including tiny public ones like /wifi/:routerId, used to force a
+// ~2MB download before anything could render. A single <Suspense> above the
+// whole <Routes> tree (see AppRoutes below) covers all of them.
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Install = lazy(() => import('./pages/Install'));
+const LicenseAgreement = lazy(() => import('./pages/LicenseAgreement'));
+const BuyLicense = lazy(() => import('./pages/BuyLicense'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const ImpersonateBridge = lazy(() => import('./pages/ImpersonateBridge'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Landing = lazy(() => import('./pages/Landing'));
+const Clients = lazy(() => import('./pages/Clients'));
+const ClientProfile = lazy(() => import('./pages/ClientProfile'));
+const PortalUsersAdmin = lazy(() => import('./pages/PortalUsersAdmin'));
+const ProductServices = lazy(() => import('./pages/ProductServices'));
+const ProductAddons = lazy(() => import('./pages/ProductAddons'));
+const ConfigOptions = lazy(() => import('./pages/ConfigOptions'));
+const Coupons = lazy(() => import('./pages/Coupons'));
+const Quotations = lazy(() => import('./pages/Quotations'));
+const Proformas = lazy(() => import('./pages/Proformas'));
+const Invoices = lazy(() => import('./pages/Invoices'));
+const Orders = lazy(() => import('./pages/Orders'));
+const CreditNotes = lazy(() => import('./pages/CreditNotes'));
+const BillCategories = lazy(() => import('./pages/BillCategories'));
+const Bills = lazy(() => import('./pages/Bills'));
+const PaymentsIn = lazy(() => import('./pages/PaymentsIn'));
+const ReceivePayments = lazy(() => import('./pages/ReceivePayments'));
+const NextBills = lazy(() => import('./pages/NextBills'));
+const ClientSubscriptions = lazy(() => import('./pages/ClientSubscriptions'));
+const RetainerBilling = lazy(() => import('./pages/RetainerBilling'));
+const PaymentsOut = lazy(() => import('./pages/PaymentsOut'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Users = lazy(() => import('./pages/Users'));
+const Sessions = lazy(() => import('./pages/Sessions'));
+const Roles = lazy(() => import('./pages/Roles'));
+const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
+const Tenants = lazy(() => import('./pages/admin/Tenants'));
+const WifiSettlements = lazy(() => import('./pages/admin/WifiSettlements'));
+const TenantUsers = lazy(() => import('./pages/admin/TenantUsers'));
+const EmailSettings = lazy(() => import('./pages/admin/EmailSettings'));
+const SmsSettingsAdmin = lazy(() => import('./pages/admin/SmsSettings'));
+const SmsPackagesAdmin = lazy(() => import('./pages/admin/SmsPackages'));
+const LicensesAdmin = lazy(() => import('./pages/admin/Licenses'));
+const LicensePlansAdmin = lazy(() => import('./pages/admin/LicensePlans'));
+const ReleasesAdmin = lazy(() => import('./pages/admin/Releases'));
+const SmsPurchasesAdmin = lazy(() => import('./pages/admin/SmsPurchases'));
+const SubscriptionPlansAdmin = lazy(() => import('./pages/admin/SubscriptionPlans'));
+const TenantProfile = lazy(() => import('./pages/admin/TenantProfile'));
+const CurrenciesAdmin = lazy(() => import('./pages/admin/Currencies'));
+const PlatformSettingsAdmin = lazy(() => import('./pages/admin/PlatformSettings'));
+const PermissionsAdmin = lazy(() => import('./pages/admin/Permissions'));
+const RolesAdmin = lazy(() => import('./pages/admin/Roles'));
+const TemplatesAdmin = lazy(() => import('./pages/admin/Templates'));
+const ExpenseCategories = lazy(() => import('./pages/ExpenseCategories'));
+const Expenses = lazy(() => import('./pages/Expenses'));
+const SystemRecords = lazy(() => import('./pages/SystemRecords'));
+const SystemRecordExpenses = lazy(() => import('./pages/SystemRecordExpenses'));
+const WifiRouters = lazy(() => import('./pages/WifiRouters'));
+const WifiPlans = lazy(() => import('./pages/WifiPlans'));
+const WifiVoucherPurchases = lazy(() => import('./pages/WifiVoucherPurchases'));
+const WifiEarnings = lazy(() => import('./pages/WifiEarnings'));
 // SystemVerifications is now mounted as a tab inside Settings.tsx — no standalone route.
-import MyVerifications from './pages/MyVerifications';
+const MyVerifications = lazy(() => import('./pages/MyVerifications'));
 // Systems, Bank Accounts, System Properties are now accessed via the
 // Settings page tabs (Settings.tsx) — no standalone routes needed.
-import PettyCash from './pages/PettyCash';
-import Statutories from './pages/Statutories';
-import StatutorySchedule from './pages/StatutorySchedule';
-import Sms from './pages/Sms';
-import Subscription from './pages/Subscription';
-import Automation from './pages/Automation';
-import Broadcast from './pages/Broadcast';
-import BroadcastDeliveryReport from './pages/BroadcastDeliveryReport';
-import WhatsappContacts from './pages/WhatsappContacts';
-import HostingAccounts from './pages/HostingAccounts';
-import DiscoverHostingAccounts from './pages/DiscoverHostingAccounts';
-import Subdomains from './pages/Subdomains';
-import BandwidthUsage from './pages/BandwidthUsage';
-import DiskUsage from './pages/DiskUsage';
-import BackupStatus from './pages/BackupStatus';
-import EmailAccounts from './pages/EmailAccounts';
-import MysqlDatabases from './pages/MysqlDatabases';
-import HostingPackages from './pages/HostingPackages';
-import ServerHealth from './pages/ServerHealth';
-import DnsZone from './pages/DnsZone';
-import Linode from './pages/Linode';
-import CronJobs from './pages/CronJobs';
-import PhpVersions from './pages/PhpVersions';
-import FtpAccounts from './pages/FtpAccounts';
-import SslExpiry from './pages/SslExpiry';
-import ServiceManagement from './pages/ServiceManagement';
-import Domains from './pages/Domains';
-import DomainActivity from './pages/DomainActivity';
-import DomainDetails from './pages/DomainDetails';
-import Tickets from './pages/Tickets';
-import CannedReplies from './pages/CannedReplies';
-import Announcements from './pages/Announcements';
-import Knowledgebase from './pages/Knowledgebase';
-import FieldMarketing from './pages/FieldMarketing';
-import SocialMedia from './pages/SocialMedia';
-import ServedCustomers from './pages/ServedCustomers';
-import StaffReports from './pages/StaffReports';
-import Attendance from './pages/Attendance';
-import WorkLocations from './pages/WorkLocations';
-import StaffTargets from './pages/StaffTargets';
-import UserProfile from './pages/UserProfile';
-import Leave from './pages/Leave';
-import Payroll from './pages/Payroll';
-import Collection from './pages/Collection';
-import Followups from './pages/Followups';
-import ResellerApplications from './pages/ResellerApplications';
-import Wallet from './pages/Wallet';
-import MyCollections from './pages/MyCollections';
-import SatisfactionCalls from './pages/SatisfactionCalls';
-import Appointments from './pages/Appointments';
+const PettyCash = lazy(() => import('./pages/PettyCash'));
+const Statutories = lazy(() => import('./pages/Statutories'));
+const StatutorySchedule = lazy(() => import('./pages/StatutorySchedule'));
+const Sms = lazy(() => import('./pages/Sms'));
+const Subscription = lazy(() => import('./pages/Subscription'));
+const Automation = lazy(() => import('./pages/Automation'));
+const Broadcast = lazy(() => import('./pages/Broadcast'));
+const BroadcastDeliveryReport = lazy(() => import('./pages/BroadcastDeliveryReport'));
+const WhatsappContacts = lazy(() => import('./pages/WhatsappContacts'));
+const HostingAccounts = lazy(() => import('./pages/HostingAccounts'));
+const DiscoverHostingAccounts = lazy(() => import('./pages/DiscoverHostingAccounts'));
+const Subdomains = lazy(() => import('./pages/Subdomains'));
+const BandwidthUsage = lazy(() => import('./pages/BandwidthUsage'));
+const DiskUsage = lazy(() => import('./pages/DiskUsage'));
+const BackupStatus = lazy(() => import('./pages/BackupStatus'));
+const EmailAccounts = lazy(() => import('./pages/EmailAccounts'));
+const MysqlDatabases = lazy(() => import('./pages/MysqlDatabases'));
+const HostingPackages = lazy(() => import('./pages/HostingPackages'));
+const ServerHealth = lazy(() => import('./pages/ServerHealth'));
+const DnsZone = lazy(() => import('./pages/DnsZone'));
+const Linode = lazy(() => import('./pages/Linode'));
+const CronJobs = lazy(() => import('./pages/CronJobs'));
+const PhpVersions = lazy(() => import('./pages/PhpVersions'));
+const FtpAccounts = lazy(() => import('./pages/FtpAccounts'));
+const SslExpiry = lazy(() => import('./pages/SslExpiry'));
+const ServiceManagement = lazy(() => import('./pages/ServiceManagement'));
+const Domains = lazy(() => import('./pages/Domains'));
+const DomainActivity = lazy(() => import('./pages/DomainActivity'));
+const DomainDetails = lazy(() => import('./pages/DomainDetails'));
+const Tickets = lazy(() => import('./pages/Tickets'));
+const CannedReplies = lazy(() => import('./pages/CannedReplies'));
+const Announcements = lazy(() => import('./pages/Announcements'));
+const Knowledgebase = lazy(() => import('./pages/Knowledgebase'));
+const FieldMarketing = lazy(() => import('./pages/FieldMarketing'));
+const SocialMedia = lazy(() => import('./pages/SocialMedia'));
+const ServedCustomers = lazy(() => import('./pages/ServedCustomers'));
+const StaffReports = lazy(() => import('./pages/StaffReports'));
+const Attendance = lazy(() => import('./pages/Attendance'));
+const WorkLocations = lazy(() => import('./pages/WorkLocations'));
+const StaffTargets = lazy(() => import('./pages/StaffTargets'));
+const UserProfile = lazy(() => import('./pages/UserProfile'));
+const Leave = lazy(() => import('./pages/Leave'));
+const Payroll = lazy(() => import('./pages/Payroll'));
+const Collection = lazy(() => import('./pages/Collection'));
+const Followups = lazy(() => import('./pages/Followups'));
+const ResellerApplications = lazy(() => import('./pages/ResellerApplications'));
+const Wallet = lazy(() => import('./pages/Wallet'));
+const MyCollections = lazy(() => import('./pages/MyCollections'));
+const SatisfactionCalls = lazy(() => import('./pages/SatisfactionCalls'));
+const Appointments = lazy(() => import('./pages/Appointments'));
 import PortalShell from './components/Layout/PortalShell';
-import PortalDashboard from './pages/portal/PortalDashboard';
-import PortalDocuments from './pages/portal/PortalDocuments';
-import PortalPayments from './pages/portal/PortalPayments';
-import PortalWallet from './pages/portal/PortalWallet';
-import PortalReseller from './pages/portal/PortalReseller';
-import PortalStatement from './pages/portal/PortalStatement';
-import PortalSubscriptions from './pages/portal/PortalSubscriptions';
-import PortalWifi from './pages/portal/PortalWifi';
-import PortalHosting from './pages/portal/PortalHosting';
-import PortalServers from './pages/portal/PortalServers';
-import PortalLinodeServerPage from './pages/portal/PortalLinodeServerPage';
-import PortalDomains from './pages/portal/PortalDomains';
-import PortalTickets from './pages/portal/PortalTickets';
-import PortalServiceDetails from './pages/portal/PortalServiceDetails';
-import PortalDomainDetails from './pages/portal/PortalDomainDetails';
-import PortalInvoiceView from './pages/portal/PortalInvoiceView';
-import PortalTicketNew from './pages/portal/PortalTicketNew';
-import PortalTicketView from './pages/portal/PortalTicketView';
-import PortalLogin from './pages/portal/PortalLogin';
-import PortalForgotPassword from './pages/portal/PortalForgotPassword';
-import PortalRegister from './pages/portal/PortalRegister';
-import PortalAnnouncements from './pages/portal/PortalAnnouncements';
-import PortalKnowledgebase from './pages/portal/PortalKnowledgebase';
-import PortalProductServices from './pages/portal/PortalProductServices';
-import PortalProfile from './pages/portal/PortalProfile';
-import PortalUsers from './pages/portal/PortalUsers';
+const PortalDashboard = lazy(() => import('./pages/portal/PortalDashboard'));
+const PortalDocuments = lazy(() => import('./pages/portal/PortalDocuments'));
+const PortalPayments = lazy(() => import('./pages/portal/PortalPayments'));
+const PortalWallet = lazy(() => import('./pages/portal/PortalWallet'));
+const PortalReseller = lazy(() => import('./pages/portal/PortalReseller'));
+const PortalStatement = lazy(() => import('./pages/portal/PortalStatement'));
+const PortalSubscriptions = lazy(() => import('./pages/portal/PortalSubscriptions'));
+const PortalWifi = lazy(() => import('./pages/portal/PortalWifi'));
+const PortalHosting = lazy(() => import('./pages/portal/PortalHosting'));
+const PortalServers = lazy(() => import('./pages/portal/PortalServers'));
+const PortalLinodeServerPage = lazy(() => import('./pages/portal/PortalLinodeServerPage'));
+const PortalDomains = lazy(() => import('./pages/portal/PortalDomains'));
+const PortalTickets = lazy(() => import('./pages/portal/PortalTickets'));
+const PortalServiceDetails = lazy(() => import('./pages/portal/PortalServiceDetails'));
+const PortalDomainDetails = lazy(() => import('./pages/portal/PortalDomainDetails'));
+const PortalInvoiceView = lazy(() => import('./pages/portal/PortalInvoiceView'));
+const PortalTicketNew = lazy(() => import('./pages/portal/PortalTicketNew'));
+const PortalTicketView = lazy(() => import('./pages/portal/PortalTicketView'));
+const PortalLogin = lazy(() => import('./pages/portal/PortalLogin'));
+const PortalForgotPassword = lazy(() => import('./pages/portal/PortalForgotPassword'));
+const PortalRegister = lazy(() => import('./pages/portal/PortalRegister'));
+const PortalAnnouncements = lazy(() => import('./pages/portal/PortalAnnouncements'));
+const PortalKnowledgebase = lazy(() => import('./pages/portal/PortalKnowledgebase'));
+const PortalProductServices = lazy(() => import('./pages/portal/PortalProductServices'));
+const PortalProfile = lazy(() => import('./pages/portal/PortalProfile'));
+const PortalUsers = lazy(() => import('./pages/portal/PortalUsers'));
 import OrderRoute from './components/order/OrderRoute';
-import OrderIndex from './pages/order/OrderIndex';
-import OrderCategory from './pages/order/OrderCategory';
-import OrderDomain from './pages/order/OrderDomain';
-import RevenueSummary from './pages/reports/RevenueSummary';
-import OutstandingAging from './pages/reports/OutstandingAging';
-import ClientStatementReport from './pages/reports/ClientStatementReport';
-import PaymentCollectionReport from './pages/reports/PaymentCollectionReport';
-import ExpenseReportPage from './pages/reports/ExpenseReportPage';
-import SystemRecordsReportPage from './pages/reports/SystemRecordsReportPage';
-import BankBalanceStatementReportPage from './pages/reports/BankBalanceStatementReportPage';
-import SystemVerificationsReportPage from './pages/reports/SystemVerificationsReportPage';
-import ProfitLossReport from './pages/reports/ProfitLossReport';
-import StatutoryComplianceReport from './pages/reports/StatutoryComplianceReport';
-import SubscriptionReportPage from './pages/reports/SubscriptionReportPage';
-import CollectionEffectivenessReport from './pages/reports/CollectionEffectivenessReport';
-import CommunicationLogReport from './pages/reports/CommunicationLogReport';
-import SatisfactionReportPage from './pages/reports/SatisfactionReport';
-import SubscriptionExpired from './pages/SubscriptionExpired';
-import LicenseInactive from './pages/LicenseInactive';
-import PesapalCallback from './pages/PesapalCallback';
-import PayInvoice from './pages/PayInvoice';
-// Lazy — a hotspot customer buying a voucher is often on a slow/throttled
-// walled-garden connection, and would otherwise have to download the
-// entire staff/portal app's bundle just to see this one small form.
+const OrderIndex = lazy(() => import('./pages/order/OrderIndex'));
+const OrderCategory = lazy(() => import('./pages/order/OrderCategory'));
+const OrderDomain = lazy(() => import('./pages/order/OrderDomain'));
+const RevenueSummary = lazy(() => import('./pages/reports/RevenueSummary'));
+const OutstandingAging = lazy(() => import('./pages/reports/OutstandingAging'));
+const ClientStatementReport = lazy(() => import('./pages/reports/ClientStatementReport'));
+const PaymentCollectionReport = lazy(() => import('./pages/reports/PaymentCollectionReport'));
+const ExpenseReportPage = lazy(() => import('./pages/reports/ExpenseReportPage'));
+const SystemRecordsReportPage = lazy(() => import('./pages/reports/SystemRecordsReportPage'));
+const BankBalanceStatementReportPage = lazy(() => import('./pages/reports/BankBalanceStatementReportPage'));
+const SystemVerificationsReportPage = lazy(() => import('./pages/reports/SystemVerificationsReportPage'));
+const ProfitLossReport = lazy(() => import('./pages/reports/ProfitLossReport'));
+const StatutoryComplianceReport = lazy(() => import('./pages/reports/StatutoryComplianceReport'));
+const SubscriptionReportPage = lazy(() => import('./pages/reports/SubscriptionReportPage'));
+const CollectionEffectivenessReport = lazy(() => import('./pages/reports/CollectionEffectivenessReport'));
+const CommunicationLogReport = lazy(() => import('./pages/reports/CommunicationLogReport'));
+const SatisfactionReportPage = lazy(() => import('./pages/reports/SatisfactionReport'));
+const SubscriptionExpired = lazy(() => import('./pages/SubscriptionExpired'));
+const LicenseInactive = lazy(() => import('./pages/LicenseInactive'));
+const PesapalCallback = lazy(() => import('./pages/PesapalCallback'));
+const PayInvoice = lazy(() => import('./pages/PayInvoice'));
 const WifiCheckout = lazy(() => import('./pages/public/WifiCheckout'));
 const WifiBalanceCheck = lazy(() => import('./pages/public/WifiBalanceCheck'));
 
@@ -214,6 +216,7 @@ export default function App() {
           <BrowserRouter>
             <AuthProvider>
               <AppBrandingHead />
+              <Suspense fallback={<LazyPageFallback />}>
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
@@ -229,9 +232,9 @@ export default function App() {
                 <Route path="/impersonate-bridge" element={<ImpersonateBridge />} />
                 <Route path="/pesapal/callback" element={<PesapalCallback />} />
                 <Route path="/pay/:id" element={<PayInvoice />} />
-                <Route path="/wifi/:routerId" element={<Suspense fallback={<LazyPageFallback />}><WifiCheckout /></Suspense>} />
-                <Route path="/wifi/:routerId/status/:purchaseId" element={<Suspense fallback={<LazyPageFallback />}><WifiCheckout /></Suspense>} />
-                <Route path="/wifi/:routerId/balance" element={<Suspense fallback={<LazyPageFallback />}><WifiBalanceCheck /></Suspense>} />
+                <Route path="/wifi/:routerId" element={<WifiCheckout />} />
+                <Route path="/wifi/:routerId/status/:purchaseId" element={<WifiCheckout />} />
+                <Route path="/wifi/:routerId/balance" element={<WifiBalanceCheck />} />
 
                 {/* Subscription expired (standalone, no sidebar) */}
                 <Route
@@ -443,6 +446,7 @@ export default function App() {
 
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </Suspense>
             </AuthProvider>
           </BrowserRouter>
         </QueryClientProvider>
