@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   IconFileInvoice, IconFileText, IconBuildingBank, IconCash, IconLayoutDashboard,
-  IconHeadset, IconSpeakerphone, IconWalk, IconMailFast,
+  IconHeadset, IconSpeakerphone, IconWalk, IconMailFast, IconWifi,
   IconServer, IconWorldWww, IconRefresh, IconLock, IconLogin2, IconShoppingCart,
   IconPalette, IconBuildingCommunity,
   IconMail, IconPhone, IconBrandWhatsapp, IconMapPin,
@@ -88,6 +88,7 @@ const FEATURES = [
   { icon: IconSpeakerphone, accent: YELLOW, title: 'WhatsApp marketing', body: 'Track leads from WhatsApp and social ads through a full pipeline. Log calls, schedule follow-ups.' },
   { icon: IconWalk, accent: ORANGE, title: 'Field marketing', body: 'Manage door-to-door campaigns. Log visits, track conversion per officer, measure ROI per session.' },
   { icon: IconMailFast, accent: 'linear-gradient(135deg, #1a68b0, #2fae60)', title: 'SMS & email notifications', body: 'Payment reminders, invoice and renewal notices sent to clients automatically.' },
+  { icon: IconWifi, accent: BLUE, title: 'WiFi hotspot voucher selling', body: 'Connect your MikroTik router and sell internet vouchers from a public checkout page — customers pay by phone and get online instantly, no staff involved.' },
 ];
 
 const HOSTING = [
