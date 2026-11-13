@@ -366,3 +366,33 @@ class WifiEarningsSummary {
         totalSettled: json.money('total_settled'),
       );
 }
+
+/// Top-of-dashboard summary for a wifi-hotspot tenant — see
+/// WifiEarningsController::dashboardSummary() on the backend. Fetched
+/// independently of the main dashboard summary, same as web's
+/// WifiHotspotSummary.tsx, since a wifi-only tenant has none of the
+/// dashboard.* permissions the rest of the dashboard needs.
+class WifiDashboardSummary {
+  const WifiDashboardSummary({
+    required this.vouchersSold,
+    required this.totalRevenue,
+    required this.uniqueCustomers,
+    required this.activeRouters,
+    required this.owed,
+  });
+
+  final int vouchersSold;
+  final double totalRevenue;
+  final int uniqueCustomers;
+  final int activeRouters;
+  final double owed;
+
+  factory WifiDashboardSummary.fromJson(Map<String, dynamic> json) =>
+      WifiDashboardSummary(
+        vouchersSold: json.count('vouchers_sold'),
+        totalRevenue: json.money('total_revenue'),
+        uniqueCustomers: json.count('unique_customers'),
+        activeRouters: json.count('active_routers'),
+        owed: json.money('owed'),
+      );
+}

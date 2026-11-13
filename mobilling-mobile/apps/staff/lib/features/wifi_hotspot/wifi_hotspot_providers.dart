@@ -28,3 +28,10 @@ plansForRouterProvider = FutureProvider.autoDispose.family<List<WifiPlan>, Strin
       .plans(mikrotikRouterId: routerId, perPage: 100)
       .then((p) => p.items.where((plan) => plan.isActive).toList()),
 );
+
+/// Top-of-dashboard summary card data — see dashboard_tab.dart's
+/// _WifiHotspotSummaryCard.
+final AutoDisposeFutureProvider<WifiDashboardSummary> wifiDashboardSummaryProvider =
+    FutureProvider.autoDispose<WifiDashboardSummary>(
+      (ref) => ref.watch(wifiHotspotServiceProvider).dashboardSummary(),
+    );

@@ -9,6 +9,7 @@ import '../../providers.dart';
 import '../hr/hr_providers.dart';
 import '../hr/payroll_screen.dart' show showPayslipSheet;
 import '../staff_self/staff_self_providers.dart';
+import '../wifi_hotspot/wifi_hotspot_providers.dart';
 import 'eotm_providers.dart';
 
 /// Staff dashboard: this month's money, counts, recent invoices.
@@ -247,6 +248,8 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                       const _MyPayrollCard(),
                       const SizedBox(height: Spacing.md),
                       const _EmployeeOfMonthCard(),
+                      const SizedBox(height: Spacing.md),
+                      const _WifiHotspotSummaryCard(),
                       if (d.hosting != null) ...[
                         const SizedBox(height: Spacing.md),
                         const SectionHeader('Hosting & domains'),
@@ -1618,6 +1621,50 @@ class _MyPayrollCard extends ConsumerWidget {
 /// feature (eotmCurrentProvider resolves to null in that case) — same
 /// "secondary widget, no error state of its own" rationale as
 /// [_MyPayrollCard] above it.
+/// Mirrors web's WifiHotspotSummary.tsx: a wifi-hotspot-only tenant has
+/// none of the dashboard.* permissions the rest of this screen needs, so
+/// without this their dashboard is otherwise blank. Self-service — checks
+/// its own permission and renders nothing if absent, same as
+/// _EmployeeOfMonthCard above.
+class _WifiHotspotSummaryCard extends ConsumerWidget {
+  const _WifiHotspotSummaryCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionControllerProvider).session;
+    if (!(session?.can('wifi_purchases.read') ?? false)) {
+      return const SizedBox.shrink();
+    }
+
+    final summary = ref.watch(wifiDashboardSummaryProvider);
+    return summary.maybeWhen(
+      data: (s) {
+        final status = context.statusColors;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SectionHeader('WiFi Hotspot'),
+            const SizedBox(height: Spacing.sm),
+            StatRail(items: [
+              StatRailItem(label: 'Routers', value: Formatting.integer(s.activeRouters)),
+              StatRailItem(label: 'Vouchers Sold', value: Formatting.integer(s.vouchersSold)),
+              StatRailItem(label: 'Revenue', value: Formatting.currency(s.totalRevenue)),
+              StatRailItem(label: 'Customers', value: Formatting.integer(s.uniqueCustomers)),
+              if (s.owed > 0)
+                StatRailItem(
+                  label: 'Owed to You',
+                  value: Formatting.currency(s.owed),
+                  emphasis: status.attention,
+                ),
+            ]),
+          ],
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
 class _EmployeeOfMonthCard extends ConsumerWidget {
   const _EmployeeOfMonthCard();
 

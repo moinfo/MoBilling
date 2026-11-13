@@ -284,6 +284,12 @@ class WifiHotspotService {
     return WifiEarningsSummary.fromJson(_unwrap(body));
   }
 
+  /// GET /wifi-dashboard-summary — needs `wifi_purchases.read`.
+  Future<WifiDashboardSummary> dashboardSummary() async {
+    final body = await _api.get<Map<String, dynamic>>('/wifi-dashboard-summary');
+    return WifiDashboardSummary.fromJson(_unwrap(body));
+  }
+
   /// GET /wifi-earnings — needs `wifi_purchases.read`.
   Future<Paginated<WifiEarningRow>> earnings({
     bool? settled,
