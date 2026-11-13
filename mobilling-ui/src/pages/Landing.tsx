@@ -216,6 +216,7 @@ const LICENSE_ACCENTS: Record<string, string> = {
   lite: YELLOW,
   reseller: BLUE,
   general: GREEN,
+  wifi_hotspot: ORANGE,
 };
 
 /**

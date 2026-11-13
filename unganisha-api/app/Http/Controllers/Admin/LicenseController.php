@@ -42,7 +42,7 @@ class LicenseController extends Controller
         $validated = $request->validate([
             'customer_name' => 'required|string|max:255',
             'customer_email' => 'required|email|max:255',
-            'product' => ['nullable', Rule::in(['lite', 'reseller', 'general'])],
+            'product' => ['nullable', Rule::in(['lite', 'reseller', 'general', 'wifi_hotspot'])],
             'starts_at' => 'required|date',
             'billing_period' => ['required', Rule::in(['perpetual', 'monthly', 'quarterly', 'semi_annual', 'annual'])],
             'amount_paid' => 'nullable|numeric|min:0',
@@ -79,7 +79,7 @@ class LicenseController extends Controller
         $validated = $request->validate([
             'customer_name' => 'required|string|max:255',
             'customer_email' => 'required|email|max:255',
-            'product' => ['nullable', Rule::in(['lite', 'reseller', 'general'])],
+            'product' => ['nullable', Rule::in(['lite', 'reseller', 'general', 'wifi_hotspot'])],
             'status' => ['required', Rule::in(['active', 'suspended', 'expired'])],
             'starts_at' => 'nullable|date',
             'billing_period' => ['nullable', Rule::in(['perpetual', 'monthly', 'quarterly', 'semi_annual', 'annual'])],

@@ -39,6 +39,10 @@ use App\Models\User;
  *                 domains or hosting at all. Derived by subtraction rather
  *                 than a second hand-maintained list, so it can never
  *                 silently drift out of sync with RESELLER_PERMISSIONS.
+ *  - 'wifi_hotspot' ("MoBilling WiFi Hotspot") — a 4th, orthogonal tier:
+ *                 none of the billing/CRM vertical above, just the
+ *                 MikroTik router/plan/voucher-sale screens plus enough
+ *                 account basics to log in and manage their own staff.
  */
 class TenantProvisioningService
 {
@@ -146,6 +150,14 @@ class TenantProvisioningService
         'reports.satisfaction', 'reports.communication',
     ];
 
+    private const WIFI_HOTSPOT_PERMISSIONS = [
+        'menu.dashboard', 'menu.settings', 'menu.users',
+        'wifi_routers.create', 'wifi_routers.read', 'wifi_routers.update', 'wifi_routers.delete',
+        'wifi_plans.create', 'wifi_plans.read', 'wifi_plans.update', 'wifi_plans.delete',
+        'wifi_purchases.create', 'wifi_purchases.read', 'wifi_purchases.update',
+        'settings.profile', 'settings.users', 'settings.company',
+    ];
+
     private static function litePermissions(): array
     {
         return array_values(array_diff(self::RESELLER_PERMISSIONS, self::DOMAIN_HOSTING_PERMISSIONS));
@@ -171,6 +183,7 @@ class TenantProvisioningService
         $ceilingIds = match ($tier) {
             'reseller' => Permission::whereIn('name', self::RESELLER_PERMISSIONS)->pluck('id'),
             'lite' => Permission::whereIn('name', self::litePermissions())->pluck('id'),
+            'wifi_hotspot' => Permission::whereIn('name', self::WIFI_HOTSPOT_PERMISSIONS)->pluck('id'),
             default => $allPermissionIds,
         };
 

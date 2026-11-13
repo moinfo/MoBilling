@@ -25,7 +25,7 @@ class LicensePurchaseController extends Controller
             'customer_name' => 'required|string|max:255',
             'customer_email' => 'required|email|max:255',
             'customer_phone' => 'nullable|string|max:50',
-            'product' => 'required|in:lite,reseller,general',
+            'product' => 'required|in:lite,reseller,general,wifi_hotspot',
             'billing_period' => 'required|in:monthly,quarterly,semi_annual,annual,perpetual',
         ]);
 

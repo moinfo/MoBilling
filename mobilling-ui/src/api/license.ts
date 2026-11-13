@@ -22,7 +22,7 @@ export interface LicensePurchaseCheckoutData {
   customer_name: string;
   customer_email: string;
   customer_phone?: string;
-  product: 'lite' | 'reseller' | 'general';
+  product: 'lite' | 'reseller' | 'general' | 'wifi_hotspot';
   billing_period: 'monthly' | 'quarterly' | 'semi_annual' | 'annual' | 'perpetual';
 }
 

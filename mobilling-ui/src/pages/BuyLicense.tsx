@@ -63,7 +63,7 @@ export default function BuyLicense() {
         customer_name: values.customer_name,
         customer_email: values.customer_email,
         customer_phone: values.customer_phone || undefined,
-        product: values.product as 'lite' | 'reseller' | 'general',
+        product: values.product as 'lite' | 'reseller' | 'general' | 'wifi_hotspot',
         billing_period: values.billing_period as 'monthly' | 'quarterly' | 'semi_annual' | 'annual' | 'perpetual',
       });
       const redirectUrl = res.data.data.redirect_url;

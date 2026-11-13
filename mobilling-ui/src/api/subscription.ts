@@ -71,7 +71,7 @@ export const getPublicPlans = () =>
 // Self-hosted license pricing (separate product line — see LicensePlan on the backend).
 export interface PublicLicensePlan {
   id: string;
-  product: 'lite' | 'reseller' | 'general';
+  product: 'lite' | 'reseller' | 'general' | 'wifi_hotspot';
   name: string;
   description: string | null;
   monthly_price: string | null;

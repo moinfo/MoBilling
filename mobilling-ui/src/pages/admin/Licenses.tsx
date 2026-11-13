@@ -38,14 +38,15 @@ const billingPeriodLabels: Record<LicenseBillingPeriod, string> = {
   annual: 'Annual (12 months)',
 };
 
-// Same three packages offered at signup (TenantProvisioningService).
+// Same packages offered at signup (TenantProvisioningService).
 const packageLabels: Record<LicensePackage, string> = {
   lite: 'MoBilling Lite',
   reseller: 'MoBilling Reseller',
   general: 'MoBilling Complete',
+  wifi_hotspot: 'MoBilling WiFi Hotspot',
 };
 const packageColors: Record<LicensePackage, string> = {
-  lite: 'grape', reseller: 'blue', general: 'teal',
+  lite: 'grape', reseller: 'blue', general: 'teal', wifi_hotspot: 'orange',
 };
 const packageOptions = (Object.keys(packageLabels) as LicensePackage[])
   .map((value) => ({ value, label: packageLabels[value] }));

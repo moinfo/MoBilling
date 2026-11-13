@@ -279,9 +279,10 @@ export const deleteSmsPackage = (id: string) =>
 
 export type LicenseBillingPeriod = 'perpetual' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
 
-// Same three packages as signup's product_tier (TenantProvisioningService) —
-// 'general' = MoBilling Complete, 'reseller' = MoBilling Reseller, 'lite' = MoBilling Lite.
-export type LicensePackage = 'lite' | 'reseller' | 'general';
+// Same packages as signup's product_tier (TenantProvisioningService) —
+// 'general' = MoBilling Complete, 'reseller' = MoBilling Reseller, 'lite' = MoBilling Lite,
+// 'wifi_hotspot' = MoBilling WiFi Hotspot.
+export type LicensePackage = 'lite' | 'reseller' | 'general' | 'wifi_hotspot';
 
 export interface License {
   id: string;
