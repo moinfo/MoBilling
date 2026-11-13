@@ -10,7 +10,7 @@ import { useCallback } from 'react';
 import {
   IconDashboard, IconFileInvoice, IconFileText, IconCash, IconReceipt, IconWallet,
   IconCalendarRepeat, IconWorld, IconServer, IconWorldWww, IconMessageCircle, IconNews, IconBook, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
-  IconLock, IconPackage, IconShoppingCart, IconArrowBack,
+  IconLock, IconPackage, IconShoppingCart, IconArrowBack, IconWifi,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -87,6 +87,12 @@ export default function PortalShell() {
         { icon: IconWorldWww, label: t('nav.reseller'), path: '/portal/reseller' },
       ],
     },
+    ...((counts?.wifi_routers_count ?? 0) > 0 ? [{
+      label: t('nav.wifiHotspot'),
+      items: [
+        { icon: IconWifi, label: t('nav.wifiHotspot'), path: '/portal/wifi', count: counts?.wifi_routers_count },
+      ],
+    }] : []),
     {
       label: t('nav.billing'),
       items: [

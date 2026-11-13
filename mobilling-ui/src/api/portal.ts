@@ -657,3 +657,63 @@ export const getPortalTransfer = (id: string) => api.get<{ data: PortalTransferS
 export const portalLockDomain = (id: string) => api.post<{ data: PortalTransferState; message: string }>(`/portal/domains/${id}/transfer/lock`);
 export const portalUnlockDomain = (id: string, confirm_domain: string) => api.post<{ data: PortalTransferState; message: string }>(`/portal/domains/${id}/transfer/unlock`, { confirm_domain });
 export const portalTransferCode = (id: string, confirm_domain: string) => api.post<{ auth_code: string }>(`/portal/domains/${id}/transfer/code`, { confirm_domain });
+
+// ── WiFi hotspot self-management ──────────────────────────────────────────
+export interface PortalWifiRouter {
+  id: string;
+  name: string;
+  host: string;
+  payment_mode: 'self_managed' | 'platform_collected';
+  is_active: boolean;
+  last_tested_at: string | null;
+  last_test_status: string | null;
+  plans_count: number;
+}
+
+export interface PortalWifiPlan {
+  id: string;
+  mikrotik_router_id: string;
+  router?: { id: string; name: string };
+  name: string;
+  duration_value: number | null;
+  duration_unit: 'hours' | 'days' | 'weeks' | null;
+  data_cap_mb: number | null;
+  speed_limit_mbps: number | null;
+  price: number;
+  hotspot_profile: string | null;
+  is_active: boolean;
+}
+
+export interface PortalWifiPlanInput {
+  mikrotik_router_id: string;
+  name: string;
+  duration_value?: number | null;
+  duration_unit?: 'hours' | 'days' | 'weeks' | null;
+  data_cap_mb?: number | null;
+  speed_limit_mbps?: number | null;
+  price: number;
+  hotspot_profile?: string | null;
+  is_active?: boolean;
+}
+
+export interface PortalWifiVoucher {
+  id: string;
+  router: { id: string; name: string } | null;
+  plan: { id: string; name: string } | null;
+  customer_phone: string;
+  amount: number;
+  commission_amount: number | null;
+  net_amount: number | null;
+  completed_at: string;
+  settled_at: string | null;
+}
+
+export const getPortalWifiRouters = () => api.get<{ data: PortalWifiRouter[] }>('/portal/wifi/routers');
+export const getPortalWifiPlans = () => api.get<{ data: PortalWifiPlan[] }>('/portal/wifi/plans');
+export const createPortalWifiPlan = (data: PortalWifiPlanInput) => api.post<{ data: PortalWifiPlan }>('/portal/wifi/plans', data);
+export const updatePortalWifiPlan = (id: string, data: Partial<PortalWifiPlanInput>) => api.put<{ data: PortalWifiPlan }>(`/portal/wifi/plans/${id}`, data);
+export const deletePortalWifiPlan = (id: string) => api.delete<{ message: string }>(`/portal/wifi/plans/${id}`);
+export const getPortalWifiVouchers = (params?: { page?: number; per_page?: number }) =>
+  api.get<{ data: PortalWifiVoucher[]; meta: any }>('/portal/wifi/vouchers', { params });
+export const getPortalWifiEarningsSummary = () =>
+  api.get<{ data: { owed: number; unsettled_count: number; total_settled: number } }>('/portal/wifi/earnings-summary');

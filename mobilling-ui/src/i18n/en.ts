@@ -71,6 +71,7 @@ export const en: Translations = {
   'nav.payments': 'Payments',
   'nav.wallet': 'Wallet',
   'nav.reseller': 'Reseller',
+  'nav.wifiHotspot': 'WiFi Hotspot',
   'nav.quotations': 'Quotations',
   'nav.creditNotes': 'Credit Notes',
   'nav.statement': 'Statement',

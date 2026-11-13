@@ -200,6 +200,7 @@ class PortalDashboardController extends Controller
             'servers_count' => \App\Models\LinodeResource::withoutGlobalScopes()->where('tenant_id', $request->user()->tenant_id)->where('client_id', $clientId)
                 ->where('type', 'instance')->whereIn('client_subscription_id', ClientSubscription::where('client_id', $clientId)->where('status', 'active')->select('id'))->count(),
             'domains_count' => $domainsCount,
+            'wifi_routers_count' => \App\Models\MikrotikRouter::where('client_id', $clientId)->count(),
             'tickets_count' => \App\Models\Ticket::where('client_id', $clientId)->where('status', '!=', 'closed')->count(),
             'unpaid_invoices_count' => $unpaidCount,
             'client_info' => $clientInfo,
