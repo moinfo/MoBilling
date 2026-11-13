@@ -151,7 +151,7 @@ class TenantProvisioningService
     ];
 
     private const WIFI_HOTSPOT_PERMISSIONS = [
-        'menu.dashboard', 'menu.settings', 'menu.users',
+        'menu.dashboard', 'menu.settings', 'menu.users', 'menu.wifi_hotspot',
         'wifi_routers.create', 'wifi_routers.read', 'wifi_routers.update', 'wifi_routers.delete',
         'wifi_plans.create', 'wifi_plans.read', 'wifi_plans.update', 'wifi_plans.delete',
         'wifi_purchases.create', 'wifi_purchases.read', 'wifi_purchases.update',
