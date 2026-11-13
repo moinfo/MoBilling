@@ -34,6 +34,7 @@ class WifiHotspotService {
     required String host,
     required String username,
     required String password,
+    String? clientId,
     String? localLoginHost,
     int apiPort = 8728,
     bool useTls = false,
@@ -44,6 +45,9 @@ class WifiHotspotService {
       '/mikrotik-routers',
       body: {
         'name': name,
+        // Always sent, even null — unlike password/localLoginHost below,
+        // there's no "leave unchanged" meaning for this field.
+        'client_id': clientId,
         'host': host,
         'local_login_host': ?localLoginHost,
         'api_port': apiPort,
@@ -58,13 +62,15 @@ class WifiHotspotService {
   }
 
   /// PUT /mikrotik-routers/{id} — needs `wifi_routers.update`. A blank
-  /// [password] keeps the one already on file.
+  /// [password] keeps the one already on file. [clientId] is always sent,
+  /// even null — pass null to unassign the router from its current client.
   Future<MikrotikRouter> updateRouter(
     String id, {
     required String name,
     required String host,
     required String username,
     String? password,
+    String? clientId,
     String? localLoginHost,
     int apiPort = 8728,
     bool useTls = false,
@@ -75,6 +81,7 @@ class WifiHotspotService {
       '/mikrotik-routers/$id',
       body: {
         'name': name,
+        'client_id': clientId,
         'host': host,
         'local_login_host': ?localLoginHost,
         'api_port': apiPort,

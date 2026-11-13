@@ -12,6 +12,9 @@ class MikrotikRouter {
     required this.useTls,
     required this.paymentMode,
     required this.isActive,
+    this.clientId,
+    this.clientName,
+    this.plansCount = 0,
     this.localLoginHost,
     this.lastTestedAt,
     this.lastTestStatus,
@@ -20,6 +23,12 @@ class MikrotikRouter {
 
   final String id;
   final String name;
+
+  /// The client this router has been handed over to, to self-manage from
+  /// their own portal — null means staff-managed only.
+  final String? clientId;
+  final String? clientName;
+  final int plansCount;
   final String host;
   final int apiPort;
   final String username;
@@ -53,6 +62,9 @@ class MikrotikRouter {
     useTls: json.flag('use_tls'),
     paymentMode: json.strOr('payment_mode', 'self_managed'),
     isActive: json.flag('is_active', fallback: true),
+    clientId: json.str('client_id'),
+    clientName: json.str('client_name'),
+    plansCount: json.count('plans_count'),
     localLoginHost: json.str('local_login_host'),
     lastTestedAt: json.date('last_tested_at'),
     lastTestStatus: json.str('last_test_status'),

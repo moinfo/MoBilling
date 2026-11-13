@@ -7,6 +7,7 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
 import '../common/paged_list.dart';
+import '../common/pickers.dart';
 import '../crm/crm_ui.dart' show CrmField, CrmMetaLine, CrmSheet, showCrmSheet;
 import 'wifi_hotspot_providers.dart';
 
@@ -203,6 +204,8 @@ class _RouterCard extends StatelessWidget {
                   router.isPlatformCollected
                       ? 'Platform-collected'
                       : 'Self-managed',
+                  router.clientName ?? 'Staff-managed',
+                  '${router.plansCount} package${router.plansCount == 1 ? '' : 's'}',
                 ].join(' · '),
               ),
             ),
@@ -308,6 +311,8 @@ class _RouterFormSheetState extends ConsumerState<_RouterFormSheet> {
   late bool _useTls;
   late String _paymentMode;
   late bool _isActive;
+  String? _clientId;
+  String? _clientName;
   bool _busy = false;
   String? _error;
 
@@ -326,6 +331,18 @@ class _RouterFormSheetState extends ConsumerState<_RouterFormSheet> {
     _useTls = r?.useTls ?? false;
     _paymentMode = r?.paymentMode ?? WifiPaymentModes.selfManaged;
     _isActive = r?.isActive ?? true;
+    _clientId = r?.clientId;
+    _clientName = r?.clientName;
+  }
+
+  Future<void> _pickClient() async {
+    final picked = await ClientPickerSheet.show(context);
+    if (picked != null) {
+      setState(() {
+        _clientId = picked.id;
+        _clientName = picked.name;
+      });
+    }
   }
 
   @override
@@ -367,6 +384,7 @@ class _RouterFormSheetState extends ConsumerState<_RouterFormSheet> {
         await service.updateRouter(
           widget.router!.id,
           name: name,
+          clientId: _clientId,
           host: host,
           username: username,
           password: password.isEmpty ? null : password,
@@ -381,6 +399,7 @@ class _RouterFormSheetState extends ConsumerState<_RouterFormSheet> {
       } else {
         await service.createRouter(
           name: name,
+          clientId: _clientId,
           host: host,
           username: username,
           password: password,
@@ -422,6 +441,46 @@ class _RouterFormSheetState extends ConsumerState<_RouterFormSheet> {
             controller: _name,
             enabled: !_busy,
             decoration: const InputDecoration(hintText: 'e.g. Shop WiFi'),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Client (optional)',
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.person_outline, size: 18),
+                  label: Text(
+                    _clientName ?? 'Staff-managed only',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onPressed: _busy ? null : _pickClient,
+                ),
+              ),
+              if (_clientId != null)
+                IconButton(
+                  tooltip: 'Clear',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() {
+                          _clientId = null;
+                          _clientName = null;
+                        }),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: Spacing.xs),
+          child: Text(
+            'If set, this client can log into their own portal to manage '
+            "this router's packages and see their voucher sales.",
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
         const SizedBox(height: Spacing.md),
