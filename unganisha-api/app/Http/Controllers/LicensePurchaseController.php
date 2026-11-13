@@ -27,22 +27,11 @@ class LicensePurchaseController extends Controller
             'customer_phone' => 'nullable|string|max:50',
             'product' => 'required|in:lite,reseller,general,wifi_hotspot',
             'billing_period' => 'required|in:monthly,quarterly,semi_annual,annual,perpetual',
-            // Only meaningful for product=wifi_hotspot — which account collects
-            // the hotspot customers' voucher payments later. self_managed pays
-            // this license normally; platform_collected gets the license free
-            // and MoBilling earns via the per-voucher commission instead (see
-            // PesapalWebhookController::processWifiVoucherCompleted()).
-            'payment_mode' => 'nullable|in:self_managed,platform_collected',
         ]);
 
         $plan = LicensePlan::where('product', $data['product'])->where('is_active', true)->first();
         if (!$plan) {
             return response()->json(['message' => 'This package is not currently available.'], 422);
-        }
-
-        $isFreeWifiHotspot = $data['product'] === 'wifi_hotspot' && ($data['payment_mode'] ?? null) === 'platform_collected';
-        if ($isFreeWifiHotspot) {
-            return $this->issueFreeWifiHotspotLicense($data);
         }
 
         $amount = $plan->priceFor($data['billing_period']);
@@ -58,9 +47,6 @@ class LicensePurchaseController extends Controller
             'billing_period' => $data['billing_period'],
             'amount' => $amount,
             'status' => 'pending',
-            'gateway_response' => $data['product'] === 'wifi_hotspot'
-                ? ['wifi_payment_mode' => $data['payment_mode'] ?? 'self_managed']
-                : null,
         ]);
 
         $nameParts = explode(' ', $data['customer_name'], 2);
@@ -110,67 +96,6 @@ class LicensePurchaseController extends Controller
                 'billing_period' => $data['billing_period'],
             ],
         ], 201);
-    }
-
-    /**
-     * platform_collected buyers skip Pesapal entirely — the license is free
-     * and never expires (billing_period forced to 'perpetual' regardless of
-     * what was submitted), since MoBilling earns via the per-voucher
-     * commission instead of a recurring license fee.
-     */
-    private function issueFreeWifiHotspotLicense(array $data)
-    {
-        $purchase = LicensePurchase::create([
-            'customer_name' => $data['customer_name'],
-            'customer_email' => $data['customer_email'],
-            'customer_phone' => $data['customer_phone'] ?? null,
-            'product' => 'wifi_hotspot',
-            'billing_period' => 'perpetual',
-            'amount' => 0,
-            'status' => 'completed',
-            'completed_at' => now(),
-            'gateway_response' => ['wifi_payment_mode' => 'platform_collected'],
-        ]);
-
-        $license = License::create([
-            'license_key' => License::generateKey(),
-            'customer_name' => $data['customer_name'],
-            'customer_email' => $data['customer_email'],
-            'product' => 'wifi_hotspot',
-            'billing_period' => 'perpetual',
-            'starts_at' => now()->toDateString(),
-            'expires_at' => null,
-            'status' => 'active',
-            'amount_paid' => 0,
-            'notes' => "Free WiFi Hotspot license (platform_collected — MoBilling collects voucher payments and keeps a {$this->commissionPercent()}% commission per transaction instead of charging a license fee). Auto-issued via purchase #{$purchase->id}.",
-        ]);
-
-        $purchase->update(['license_id' => $license->id]);
-
-        Log::info('License purchase: free WiFi Hotspot license issued (platform_collected)', [
-            'purchase_id' => $purchase->id,
-            'license_id' => $license->id,
-        ]);
-
-        return response()->json([
-            'data' => [
-                'status' => 'completed',
-                'purchase_id' => $purchase->id,
-                'redirect_url' => null,
-                'product' => 'wifi_hotspot',
-                'billing_period' => 'perpetual',
-                'amount' => 0,
-                'license' => [
-                    'license_key' => $license->license_key,
-                    'expires_at' => null,
-                ],
-            ],
-        ], 201);
-    }
-
-    private function commissionPercent(): string
-    {
-        return \App\Models\PlatformSetting::get('wifi_commission_percent', '10');
     }
 
     public function status(LicensePurchase $licensePurchase)
