@@ -12,6 +12,9 @@ class MikrotikRouterResource extends JsonResource
         return [
             'id'                => $this->id,
             'name'              => $this->name,
+            'client_id'         => $this->client_id,
+            'client_name'       => $this->whenLoaded('client', fn () => $this->client?->name),
+            'plans_count'       => $this->when($this->plans_count !== null, fn () => $this->plans_count),
             'host'              => $this->host,
             'local_login_host'  => $this->local_login_host,
             'api_port'          => $this->api_port,

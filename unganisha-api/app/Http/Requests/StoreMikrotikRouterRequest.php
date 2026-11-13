@@ -15,8 +15,11 @@ class StoreMikrotikRouterRequest extends FormRequest
     {
         $isUpdate = $this->isMethod('put') || $this->isMethod('patch');
 
+        $tenantId = auth()->user()->tenant_id;
+
         return [
             'name'      => 'required|string|max:255',
+            'client_id' => ['nullable', 'uuid', \Illuminate\Validation\Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
             'host'      => 'required|string|max:255',
             'local_login_host' => 'nullable|string|max:255',
             'api_port'  => 'nullable|integer|min:1|max:65535',

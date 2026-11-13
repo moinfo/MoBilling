@@ -13,7 +13,7 @@ class MikrotikRouter extends Model
     use HasFactory, HasUuids, SoftDeletes, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'name', 'host', 'local_login_host', 'api_port', 'username', 'password', 'use_tls',
+        'tenant_id', 'client_id', 'name', 'host', 'local_login_host', 'api_port', 'username', 'password', 'use_tls',
         'payment_mode', 'is_active', 'last_tested_at', 'last_test_status', 'last_test_message',
     ];
 
@@ -35,6 +35,11 @@ class MikrotikRouter extends Model
         'is_active'      => 'boolean',
         'last_tested_at' => 'datetime',
     ];
+
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
 
     public function plans()
     {

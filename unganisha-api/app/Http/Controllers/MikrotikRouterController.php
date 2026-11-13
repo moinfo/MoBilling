@@ -13,7 +13,7 @@ class MikrotikRouterController extends Controller
 {
     public function index(Request $request)
     {
-        $query = MikrotikRouter::query();
+        $query = MikrotikRouter::with('client:id,name')->withCount('plans');
 
         if ($request->filled('search')) {
             $query->where(function ($q) use ($request) {
@@ -30,12 +30,12 @@ class MikrotikRouterController extends Controller
     public function store(StoreMikrotikRouterRequest $request)
     {
         $router = MikrotikRouter::create($request->validated());
-        return new MikrotikRouterResource($router);
+        return new MikrotikRouterResource($router->load('client:id,name')->loadCount('plans'));
     }
 
     public function show(MikrotikRouter $mikrotik_router)
     {
-        return new MikrotikRouterResource($mikrotik_router);
+        return new MikrotikRouterResource($mikrotik_router->load('client:id,name')->loadCount('plans'));
     }
 
     public function update(StoreMikrotikRouterRequest $request, MikrotikRouter $mikrotik_router)
@@ -46,7 +46,7 @@ class MikrotikRouterController extends Controller
         }
 
         $mikrotik_router->update($data);
-        return new MikrotikRouterResource($mikrotik_router);
+        return new MikrotikRouterResource($mikrotik_router->load('client:id,name')->loadCount('plans'));
     }
 
     public function destroy(MikrotikRouter $mikrotik_router)

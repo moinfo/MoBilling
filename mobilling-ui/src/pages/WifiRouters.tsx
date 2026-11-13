@@ -6,10 +6,12 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconEdit, IconTrash, IconSearch, IconPlugConnected, IconBook2 } from '@tabler/icons-react';
+import { useNavigate } from 'react-router-dom';
 import {
   getMikrotikRouters, createMikrotikRouter, updateMikrotikRouter, deleteMikrotikRouter, testMikrotikRouter,
   MikrotikRouter,
 } from '../api/mikrotikRouters';
+import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
 import WifiRouterSetupGuide from '../components/WifiRouterSetupGuide';
 
@@ -20,6 +22,7 @@ const PAYMENT_MODE_OPTIONS = [
 
 export default function WifiRouters() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { can } = usePermissions();
   const canCreate = can('wifi_routers.create');
   const canUpdate = can('wifi_routers.update');
@@ -38,12 +41,18 @@ export default function WifiRouters() {
     queryFn: () => getMikrotikRouters({ page, search: debouncedSearch || undefined }),
   });
 
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients-for-wifi-routers'],
+    queryFn: () => getClients({ per_page: 200 }),
+  });
+  const clientOptions = (clientsData?.data?.data ?? []).map((c: any) => ({ value: c.id, label: c.name }));
+
   const items: MikrotikRouter[] = data?.data?.data || [];
   const meta = data?.data?.meta;
 
   const form = useForm({
     initialValues: {
-      name: '', host: '', local_login_host: '', api_port: 8728, username: '', password: '', use_tls: false,
+      name: '', client_id: null as string | null, host: '', local_login_host: '', api_port: 8728, username: '', password: '', use_tls: false,
       payment_mode: 'self_managed', is_active: true,
     },
     validate: {
@@ -57,12 +66,12 @@ export default function WifiRouters() {
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ name: '', host: '', local_login_host: '', api_port: 8728, username: '', password: '', use_tls: false, payment_mode: 'self_managed', is_active: true });
+    form.setValues({ name: '', client_id: null, host: '', local_login_host: '', api_port: 8728, username: '', password: '', use_tls: false, payment_mode: 'self_managed', is_active: true });
     setFormOpen(true);
   };
   const openEdit = (r: MikrotikRouter) => {
     setEditing(r);
-    form.setValues({ name: r.name, host: r.host, local_login_host: r.local_login_host ?? '', api_port: r.api_port, username: r.username, password: '', use_tls: r.use_tls, payment_mode: r.payment_mode, is_active: r.is_active });
+    form.setValues({ name: r.name, client_id: r.client_id, host: r.host, local_login_host: r.local_login_host ?? '', api_port: r.api_port, username: r.username, password: '', use_tls: r.use_tls, payment_mode: r.payment_mode, is_active: r.is_active });
     setFormOpen(true);
   };
 
@@ -137,6 +146,8 @@ export default function WifiRouters() {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Name</Table.Th>
+              <Table.Th>Client</Table.Th>
+              <Table.Th>Packages</Table.Th>
               <Table.Th>Host</Table.Th>
               <Table.Th>Payment</Table.Th>
               <Table.Th>Last Test</Table.Th>
@@ -148,6 +159,15 @@ export default function WifiRouters() {
             {items.map((r) => (
               <Table.Tr key={r.id}>
                 <Table.Td fw={500}>{r.name}</Table.Td>
+                <Table.Td>{r.client_name ?? <Text size="sm" c="dimmed">staff-managed</Text>}</Table.Td>
+                <Table.Td>
+                  <Button
+                    size="compact-xs" variant={!r.plans_count ? 'light' : 'subtle'} color={!r.plans_count ? 'orange' : undefined}
+                    onClick={() => navigate(`/wifi-plans?router=${r.id}`)}
+                  >
+                    {r.plans_count ?? 0} package{r.plans_count === 1 ? '' : 's'}
+                  </Button>
+                </Table.Td>
                 <Table.Td>{r.host}:{r.api_port}</Table.Td>
                 <Table.Td>
                   <Badge size="sm" variant="light" color={r.payment_mode === 'platform_collected' ? 'violet' : 'gray'}>
@@ -197,6 +217,12 @@ export default function WifiRouters() {
         <form onSubmit={form.onSubmit((v) => (editing ? updateMutation : createMutation).mutate(v))}>
           <Stack>
             <TextInput label="Name" required placeholder="e.g. Home WiFi" {...form.getInputProps('name')} />
+            <Select
+              label="Client (optional)" placeholder="Staff-managed only — not handed to a client"
+              clearable searchable data={clientOptions}
+              description="If set, this client can log into their own portal to manage this router's packages and see their voucher sales."
+              {...form.getInputProps('client_id')}
+            />
             <TextInput label="Host / IP Address" required placeholder="e.g. 41.xxx.xxx.xxx" {...form.getInputProps('host')} />
             <TextInput label="Local Hotspot IP (optional)" placeholder="e.g. 192.168.88.1"
               description="The address customer devices see on the WiFi itself — lets us auto-connect them after payment instead of making them type the voucher code."

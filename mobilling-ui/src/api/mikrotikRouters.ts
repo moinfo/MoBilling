@@ -5,6 +5,9 @@ export type WifiPaymentMode = 'self_managed' | 'platform_collected';
 export interface MikrotikRouter {
   id: string;
   name: string;
+  client_id: string | null;
+  client_name: string | null;
+  plans_count?: number;
   host: string;
   local_login_host: string | null;
   api_port: number;
@@ -20,6 +23,7 @@ export interface MikrotikRouter {
 
 export interface MikrotikRouterPayload {
   name: string;
+  client_id?: string | null;
   host: string;
   local_login_host?: string;
   api_port?: number;

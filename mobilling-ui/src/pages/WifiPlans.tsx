@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Switch, Stack } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
@@ -23,8 +24,9 @@ export default function WifiPlans() {
   const canUpdate = can('wifi_plans.update');
   const canDelete = can('wifi_plans.delete');
 
+  const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
-  const [filterRouter, setFilterRouter] = useState<string | null>(null);
+  const [filterRouter, setFilterRouter] = useState<string | null>(searchParams.get('router'));
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<WifiPlan | null>(null);
 

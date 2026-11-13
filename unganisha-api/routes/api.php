@@ -1321,6 +1321,17 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/announcements', [\App\Http\Controllers\Portal\PortalAnnouncementController::class, 'index']);
     Route::get('/knowledgebase',        [\App\Http\Controllers\Portal\PortalKnowledgebaseController::class, 'index']);
     Route::get('/knowledgebase/{slug}', [\App\Http\Controllers\Portal\PortalKnowledgebaseController::class, 'show']);
+
+    // WiFi hotspot self-management — only for routers a tenant has handed
+    // over to this client (MikrotikRouter.client_id); every method is
+    // scoped to the caller's own client_id inside PortalWifiController.
+    Route::get('/wifi/routers', [\App\Http\Controllers\Portal\PortalWifiController::class, 'routers']);
+    Route::get('/wifi/plans', [\App\Http\Controllers\Portal\PortalWifiController::class, 'plans']);
+    Route::post('/wifi/plans', [\App\Http\Controllers\Portal\PortalWifiController::class, 'storePlan']);
+    Route::put('/wifi/plans/{wifi_plan}', [\App\Http\Controllers\Portal\PortalWifiController::class, 'updatePlan']);
+    Route::delete('/wifi/plans/{wifi_plan}', [\App\Http\Controllers\Portal\PortalWifiController::class, 'destroyPlan']);
+    Route::get('/wifi/vouchers', [\App\Http\Controllers\Portal\PortalWifiController::class, 'vouchers']);
+    Route::get('/wifi/earnings-summary', [\App\Http\Controllers\Portal\PortalWifiController::class, 'earningsSummary']);
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
     Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);
