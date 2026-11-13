@@ -1,5 +1,6 @@
+import { lazy, Suspense } from 'react';
 import { useAppBrandingHead } from './branding';
-import { MantineProvider } from '@mantine/core';
+import { MantineProvider, Center, Loader } from '@mantine/core';
 import { theme } from './theme';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { Notifications } from '@mantine/notifications';
@@ -173,8 +174,11 @@ import SubscriptionExpired from './pages/SubscriptionExpired';
 import LicenseInactive from './pages/LicenseInactive';
 import PesapalCallback from './pages/PesapalCallback';
 import PayInvoice from './pages/PayInvoice';
-import WifiCheckout from './pages/public/WifiCheckout';
-import WifiBalanceCheck from './pages/public/WifiBalanceCheck';
+// Lazy — a hotspot customer buying a voucher is often on a slow/throttled
+// walled-garden connection, and would otherwise have to download the
+// entire staff/portal app's bundle just to see this one small form.
+const WifiCheckout = lazy(() => import('./pages/public/WifiCheckout'));
+const WifiBalanceCheck = lazy(() => import('./pages/public/WifiBalanceCheck'));
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -189,6 +193,15 @@ const queryClient = new QueryClient({
 function AppBrandingHead() {
   useAppBrandingHead();
   return null;
+}
+
+/** Shown only while a lazy-loaded chunk is still downloading. */
+function LazyPageFallback() {
+  return (
+    <Center mih="100vh">
+      <Loader />
+    </Center>
+  );
 }
 
 export default function App() {
@@ -216,9 +229,9 @@ export default function App() {
                 <Route path="/impersonate-bridge" element={<ImpersonateBridge />} />
                 <Route path="/pesapal/callback" element={<PesapalCallback />} />
                 <Route path="/pay/:id" element={<PayInvoice />} />
-                <Route path="/wifi/:routerId" element={<WifiCheckout />} />
-                <Route path="/wifi/:routerId/status/:purchaseId" element={<WifiCheckout />} />
-                <Route path="/wifi/:routerId/balance" element={<WifiBalanceCheck />} />
+                <Route path="/wifi/:routerId" element={<Suspense fallback={<LazyPageFallback />}><WifiCheckout /></Suspense>} />
+                <Route path="/wifi/:routerId/status/:purchaseId" element={<Suspense fallback={<LazyPageFallback />}><WifiCheckout /></Suspense>} />
+                <Route path="/wifi/:routerId/balance" element={<Suspense fallback={<LazyPageFallback />}><WifiBalanceCheck /></Suspense>} />
 
                 {/* Subscription expired (standalone, no sidebar) */}
                 <Route
