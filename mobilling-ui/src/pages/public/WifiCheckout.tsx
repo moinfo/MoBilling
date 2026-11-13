@@ -76,9 +76,10 @@ function CheckoutForm({ routerId }: { routerId: string }) {
         <Alert color="red" icon={<IconAlertTriangle size={18} />}>{error}</Alert>
       ) : info && (
         <Stack>
-          <Paper withBorder p="md" radius="md" bg="var(--mantine-color-blue-0)">
-            <Text fw={600} size="sm" mb={6}>Jinsi ya Kuunganisha</Text>
-            <List size="sm" spacing={4} type="ordered">
+          <Paper withBorder p="md" radius="md" bg="var(--mantine-color-blue-light)"
+            style={{ color: 'var(--mantine-color-blue-light-color)' }}>
+            <Text fw={600} size="sm" mb={6} c="inherit">Jinsi ya Kuunganisha</Text>
+            <List size="sm" spacing={4} type="ordered" c="inherit">
               <List.Item>Chagua kifurushi unachohitaji hapa chini</List.Item>
               <List.Item>Weka namba yako ya simu</List.Item>
               <List.Item>Lipia kwa M-Pesa, Tigo Pesa, Airtel Money au kadi</List.Item>
