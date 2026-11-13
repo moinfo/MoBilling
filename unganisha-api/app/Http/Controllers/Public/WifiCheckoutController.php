@@ -119,11 +119,10 @@ class WifiCheckoutController extends Controller
     {
         $purchase->loadMissing(['router', 'plan']);
         $completed = $purchase->status === 'completed';
-        // Mirrors WifiVoucherIssuedNotification::via() — tells the success
-        // page whether an SMS/WhatsApp copy was actually possible, so it
-        // doesn't claim one was sent when the tenant has neither enabled.
-        $tenant = $purchase->tenant()->withoutGlobalScopes()->first();
-        $sentToPhone = (bool) ($tenant?->sms_enabled || $tenant?->whatsapp_enabled);
+        // Tells the success page whether an SMS/WhatsApp copy was actually
+        // possible, so it doesn't claim one was sent when it couldn't be —
+        // mirrors WifiVoucherIssuedNotification::via()'s own check.
+        $sentToPhone = \App\Notifications\WifiVoucherIssuedNotification::canDeliver();
 
         return response()->json(['data' => [
             'id'               => $purchase->id,

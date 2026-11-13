@@ -25,7 +25,12 @@ class SmsChannel
             return null;
         }
 
-        $tenant = $notifiable->tenant;
+        // A notification can override which tenant's SMS account sends it
+        // (e.g. WifiVoucherIssuedNotification routes through MoBilling's
+        // own account rather than the voucher's owning tenant's).
+        $tenant = method_exists($notification, 'notificationTenant')
+            ? ($notification->notificationTenant() ?? $notifiable->tenant)
+            : $notifiable->tenant;
         if (!$tenant) {
             return null;
         }

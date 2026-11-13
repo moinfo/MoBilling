@@ -4,7 +4,9 @@ namespace App\Notifications;
 
 use App\Channels\SmsChannel;
 use App\Channels\WhatsAppChannel;
+use App\Models\Tenant;
 use App\Models\WifiVoucherPurchase;
+use App\Services\MosmsService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
@@ -13,22 +15,60 @@ use Illuminate\Notifications\Notification;
  * Delivers the hotspot username/password to the customer's phone once
  * provisioned — they typed only a phone number at checkout, so this (or
  * the on-screen status page) is the only way they get their voucher.
+ *
+ * Sent through MoBilling's own ("Moinfotech Company Limited") SMS/WhatsApp
+ * account rather than the router-owning tenant's: most WiFi hotspot
+ * tenants are small shop owners who never set up their own SMS, and this
+ * is a transactional "here's your code" message, not tenant-branded
+ * content, so there's nothing tenant-specific worth gating it behind.
  */
 class WifiVoucherIssuedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
+    private const SENDING_TENANT_ID = '019c8f39-679e-70d2-af92-ac72a25b0d9c';
+
     public function __construct(public WifiVoucherPurchase $purchase) {}
+
+    public static function sendingTenant(): ?Tenant
+    {
+        return Tenant::withoutGlobalScopes()->find(self::SENDING_TENANT_ID);
+    }
+
+    /** True if the sending tenant can actually deliver SMS and/or WhatsApp right now. */
+    public static function canDeliver(): bool
+    {
+        $tenant = self::sendingTenant();
+        if (!$tenant) {
+            return false;
+        }
+
+        $mosmsLinked = app(MosmsService::class)->isLinked($tenant);
+        $canSms = (bool) $tenant->sms_authorization || $mosmsLinked;
+        $canWhatsApp = ((bool) $tenant->whatsapp_phone_number_id && (bool) $tenant->whatsapp_access_token) || $mosmsLinked;
+
+        return $canSms || $canWhatsApp;
+    }
+
+    public function notificationTenant(): ?Tenant
+    {
+        return self::sendingTenant();
+    }
 
     public function via($notifiable): array
     {
-        $tenant = $this->purchase->tenant()->withoutGlobalScopes()->first();
+        $tenant = $this->notificationTenant();
+        if (!$tenant || !$notifiable->phone) {
+            return [];
+        }
+
+        $mosmsLinked = app(MosmsService::class)->isLinked($tenant);
 
         $channels = [];
-        if ($tenant?->sms_enabled && $notifiable->phone) {
+        if ($tenant->sms_authorization || $mosmsLinked) {
             $channels[] = SmsChannel::class;
         }
-        if ($tenant?->whatsapp_enabled && $notifiable->phone) {
+        if (($tenant->whatsapp_phone_number_id && $tenant->whatsapp_access_token) || $mosmsLinked) {
             $channels[] = WhatsAppChannel::class;
         }
 

@@ -144,10 +144,9 @@ class WifiVoucherPurchaseController extends Controller
     {
         abort_unless($wifi_voucher_purchase->hotspot_username, 422, 'This voucher has not been provisioned yet.');
 
-        $tenant = $wifi_voucher_purchase->tenant()->withoutGlobalScopes()->first();
-        if (!$tenant?->sms_enabled && !$tenant?->whatsapp_enabled) {
+        if (!WifiVoucherIssuedNotification::canDeliver()) {
             return response()->json([
-                'message' => 'SMS and WhatsApp are not enabled for this tenant, so there is nothing to resend through — enable one in Settings, or use "View message" to relay the code yourself.',
+                'message' => 'SMS/WhatsApp sending is not available right now, so there is nothing to resend through — use "View message" to relay the code yourself.',
             ], 422);
         }
 
