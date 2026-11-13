@@ -578,6 +578,38 @@ class DomainController extends Controller
      * "TZNIC" only marks it as one of ours for future nameserver/EPP actions,
      * it does NOT take over sponsorship at the registry.
      */
+    /**
+     * Every domain the FRED/TZNIC bridge's own database has for this
+     * registrant that has NO matching row in our `domains` table — e.g.
+     * registered directly at the registry, or imported incompletely.
+     * Read-only: lists the gap for staff to then addExisting() one at a
+     * time, picking a client for each.
+     */
+    public function registryGap(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $driver = $this->registrar->driverFor($tenantId);
+        if (!$driver instanceof \App\Services\Registrar\FredHttpDriver) {
+            return response()->json(['message' => 'This tenant is not on the FRED/TZNIC registrar.'], 422);
+        }
+
+        $registry = collect($driver->listAll())->keyBy(fn ($r) => strtolower($r['name']));
+        $known = Domain::withoutGlobalScopes()
+            ->whereIn('name', $registry->keys())
+            ->whereNotIn('status', ['cancelled', 'transferred_out'])
+            ->pluck('name')->map(fn ($n) => strtolower($n))->flip();
+
+        $missing = $registry->reject(fn ($r, $name) => $known->has($name))->values()->map(fn ($r) => [
+            'name'          => $r['name'],
+            'status'        => $r['status'],
+            'registered_at' => $r['registered_at'] ?? null,
+            'expires_at'    => $r['expires_at'] ?? null,
+            'nsset_id'      => $r['nsset_id'] ?? null,
+        ]);
+
+        return response()->json(['data' => $missing, 'total_at_registry' => $registry->count()]);
+    }
+
     public function addExisting(Request $request)
     {
         $tenantId = auth()->user()->tenant_id;

@@ -19,6 +19,7 @@ import {
   createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
   DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
   whoisDomain, WhoisResult, lookupRegistrarOne, RegistrarView,
+  getDomainRegistryGap,
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import DomainSuggestPanel from '../components/DomainSuggestPanel';
@@ -101,6 +102,8 @@ export default function Domains() {
   const [renewFor, setRenewFor] = useState<DomainRecord | null>(null);
   const [confirmManualFor, setConfirmManualFor] = useState<DomainRecord | null>(null);
   const [authInfoFor, setAuthInfoFor] = useState<{ domain: DomainRecord; code: string | null; sentInfo?: { message: string; hint: string | null } } | null>(null);
+  const [registryGapOpen, setRegistryGapOpen] = useState(false);
+  const [wizardExisting, setWizardExisting] = useState<{ expiresAt?: string | null } | undefined>(undefined);
 
   const params: Record<string, string> = { page: String(page) };
   if (statusFilter) params.status = statusFilter;
@@ -245,6 +248,11 @@ export default function Domains() {
           {can('domains.create') && (
             <Button leftSection={<IconPlus size={16} />} onClick={() => setWizardOpen(true)}>
               Register / Transfer
+            </Button>
+          )}
+          {can('domains.create') && (
+            <Button variant="light" color="orange" leftSection={<IconRefresh size={16} />} onClick={() => setRegistryGapOpen(true)}>
+              Check TZNIC registry
             </Button>
           )}
           <Button variant="light" color="grape" leftSection={<IconHistory size={16} />}
@@ -539,7 +547,21 @@ export default function Domains() {
         <Group justify="center"><Pagination value={page} onChange={setPage} total={lastPage} size="sm" /></Group>
       )}
 
-      <OrderWizard opened={wizardOpen} prefillName={wizardName} onClose={() => setWizardOpen(false)} />
+      <OrderWizard
+        opened={wizardOpen} prefillName={wizardName} prefillExisting={wizardExisting}
+        onClose={() => { setWizardOpen(false); setWizardExisting(undefined); }}
+      />
+      {registryGapOpen && (
+        <RegistryGapModal
+          onClose={() => setRegistryGapOpen(false)}
+          onAdd={(name, expiresAt) => {
+            setRegistryGapOpen(false);
+            setWizardName(name);
+            setWizardExisting({ expiresAt });
+            setWizardOpen(true);
+          }}
+        />
+      )}
       {nameComOpen && <NameComManager opened initialTab={nameComTab} onClose={() => setNameComOpen(false)} />}
       {bulkRun && <NameComBulkRunModal kind={bulkRun} onClose={() => setBulkRun(null)}
         onDone={() => { qc.invalidateQueries({ queryKey: ['domains'] }); qc.invalidateQueries({ queryKey: ['domain-stats'] }); }} />}
@@ -727,7 +749,61 @@ function DomainLookup({ canRegister, onRegister, onOrderName }: { canRegister: b
   );
 }
 
-function OrderWizard({ opened, onClose, prefillName = '' }: { opened: boolean; onClose: () => void; prefillName?: string }) {
+function RegistryGapModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string, expiresAt: string | null) => void }) {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['domain-registry-gap'],
+    queryFn: getDomainRegistryGap,
+  });
+  const rows = data?.data?.data ?? [];
+  const total = data?.data?.total_at_registry;
+
+  return (
+    <Modal opened onClose={onClose} title="Domains at TZNIC not tracked here" size="lg" centered>
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          Checks every domain the TZNIC/FRED registrant account (REG-MOINFOTECH) actually owns against our own
+          records — anything listed below exists at the registry but has no row here yet (e.g. registered
+          directly at TZNIC, or imported incompletely).
+        </Text>
+        {isLoading ? (
+          <Center py="lg"><Loader /></Center>
+        ) : isError ? (
+          <Alert color="red">{(error as any)?.response?.data?.message ?? 'Could not reach the registry.'}</Alert>
+        ) : rows.length === 0 ? (
+          <Alert color="green">All {total} domains at the registry are already tracked here — nothing missing.</Alert>
+        ) : (
+          <>
+            <Text size="sm">{rows.length} of {total} registry domains are missing here:</Text>
+            <Table.ScrollContainer minWidth={500}>
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr><Table.Th>Domain</Table.Th><Table.Th>Expires</Table.Th><Table.Th /></Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {rows.map((r) => (
+                    <Table.Tr key={r.name}>
+                      <Table.Td>{r.name}</Table.Td>
+                      <Table.Td>{r.expires_at ?? '—'}</Table.Td>
+                      <Table.Td>
+                        <Button size="xs" variant="light" onClick={() => onAdd(r.name, r.expires_at)}>Add & assign client</Button>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </>
+        )}
+      </Stack>
+    </Modal>
+  );
+}
+
+function OrderWizard({ opened, onClose, prefillName = '', prefillExisting }: {
+  opened: boolean; onClose: () => void; prefillName?: string;
+  /** Jump straight to "Add existing domain" pre-filled from a registry lookup, e.g. the TZNIC-gap check. */
+  prefillExisting?: { expiresAt?: string | null };
+}) {
   const qc = useQueryClient();
   const [action, setAction] = useState<'register' | 'transfer' | 'existing'>('register');
   const [name, setName] = useState('');
@@ -741,8 +817,18 @@ function OrderWizard({ opened, onClose, prefillName = '' }: { opened: boolean; o
   const [existingNotes, setExistingNotes] = useState('');
 
   useEffect(() => {
-    if (opened && prefillName) { setName(prefillName); setChecked(null); setAction('register'); }
-  }, [opened, prefillName]);
+    if (!opened || !prefillName) return;
+    setName(prefillName);
+    setChecked(null);
+    if (prefillExisting) {
+      setAction('existing');
+      setExistingRegistrar('tznic');
+      setExistingExpiry(prefillExisting.expiresAt ? dayjs(prefillExisting.expiresAt).toDate() : null);
+      setExistingNotes('Found at TZNIC registry, not previously tracked here.');
+    } else {
+      setAction('register');
+    }
+  }, [opened, prefillName, prefillExisting]);
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients-for-domains'],

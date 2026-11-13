@@ -118,6 +118,37 @@ class FredHttpDriver implements RegistrarDriver
         return $this->call('get', "/api/domains/{$domain}/info/");
     }
 
+    /**
+     * Every domain the bridge's own database has for this registrant, paged
+     * through — not part of RegistrarDriver (no other driver supports it),
+     * used only for the staff-facing "find domains missing from our system"
+     * reconciliation check. Not called anywhere in the normal order/renew/
+     * sync flow, which only ever looks up one already-known domain at a time.
+     */
+    public function listAll(): array
+    {
+        $all = [];
+        $path = '/api/domains/';
+        while ($path) {
+            // Seen transiently fail on an otherwise-fine page under load;
+            // one retry clears it rather than losing the rest of the list.
+            try {
+                $json = $this->call('get', $path);
+            } catch (RegistrarApiException $e) {
+                $json = $this->call('get', $path);
+            }
+            $all = array_merge($all, $json['results'] ?? []);
+            $next = $json['next'] ?? null;
+            if (!$next) {
+                break;
+            }
+            $parsed = parse_url($next);
+            $path = ($parsed['path'] ?? '/api/domains/') . (isset($parsed['query']) ? '?' . $parsed['query'] : '');
+        }
+
+        return $all;
+    }
+
     public function credit(): array
     {
         // Tenant accounts carry their own EPP accreditation → connect under it;

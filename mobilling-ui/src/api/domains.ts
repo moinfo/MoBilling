@@ -241,6 +241,18 @@ export const addExistingDomain = (data: {
   expires_at?: string; notes?: string;
 }) => api.post<{ data: unknown; message: string }>('/domains/add-existing', data);
 
+export interface RegistryGapRow {
+  name: string;
+  status: string;
+  registered_at: string | null;
+  expires_at: string | null;
+  nsset_id: string | null;
+}
+
+/** Every domain the TZNIC/FRED registrant account owns that has no matching row in our own `domains` table. */
+export const getDomainRegistryGap = () =>
+  api.get<{ data: RegistryGapRow[]; total_at_registry: number }>('/domains/registry-gap');
+
 export interface DomainNameservers {
   provider?: 'namecom';
   nsset: string | null;
