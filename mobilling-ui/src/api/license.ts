@@ -24,15 +24,20 @@ export interface LicensePurchaseCheckoutData {
   customer_phone?: string;
   product: 'lite' | 'reseller' | 'general' | 'wifi_hotspot';
   billing_period: 'monthly' | 'quarterly' | 'semi_annual' | 'annual' | 'perpetual';
+  /** Only meaningful for product='wifi_hotspot' — who collects the hotspot customers' voucher payments. */
+  payment_mode?: 'self_managed' | 'platform_collected';
 }
 
 export interface LicensePurchaseCheckout {
+  status: 'pending' | 'completed';
   purchase_id: string;
   redirect_url: string | null;
-  order_tracking_id: string | null;
+  order_tracking_id?: string | null;
   amount: number;
   product: string;
   billing_period: string;
+  /** Present when status='completed' — the platform_collected free-license path skips Pesapal entirely. */
+  license?: { license_key: string; expires_at: string | null };
 }
 
 export interface LicensePurchaseStatus {
