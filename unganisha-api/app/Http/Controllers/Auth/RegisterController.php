@@ -32,6 +32,10 @@ class RegisterController extends Controller
                     'name' => $request->company_name,
                     'email' => $request->email,
                     'phone' => $request->phone,
+                    // Without this it silently falls through to the tenants
+                    // table's own column default (KES) — wrong for every
+                    // public hosted signup, all of which are TZS businesses.
+                    'currency' => 'TZS',
                     'trial_ends_at' => now()->addDays(7),
                 ],
                 [
