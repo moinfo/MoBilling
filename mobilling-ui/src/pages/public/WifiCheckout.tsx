@@ -223,10 +223,14 @@ function VoucherStatus({ purchaseId, routerId }: { purchaseId: string; routerId:
                 </Button>
               </>
             )}
-            <Divider w="100%" my="xs" />
-            <Text size="xs" c="dimmed" ta="center">
-              A copy has also been sent to your phone.
-            </Text>
+            {status.sent_to_phone && (
+              <>
+                <Divider w="100%" my="xs" />
+                <Text size="xs" c="dimmed" ta="center">
+                  A copy has also been sent to your phone.
+                </Text>
+              </>
+            )}
             <Text size="xs" ta="center">
               <Link to={`/wifi/${routerId}/balance`}>Angalia salio lako baadaye</Link>
             </Text>

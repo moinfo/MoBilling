@@ -119,12 +119,18 @@ class WifiCheckoutController extends Controller
     {
         $purchase->loadMissing(['router', 'plan']);
         $completed = $purchase->status === 'completed';
+        // Mirrors WifiVoucherIssuedNotification::via() — tells the success
+        // page whether an SMS/WhatsApp copy was actually possible, so it
+        // doesn't claim one was sent when the tenant has neither enabled.
+        $tenant = $purchase->tenant()->withoutGlobalScopes()->first();
+        $sentToPhone = (bool) ($tenant?->sms_enabled || $tenant?->whatsapp_enabled);
 
         return response()->json(['data' => [
             'id'               => $purchase->id,
             'status'           => $purchase->status,
             'hotspot_username' => $completed ? $purchase->hotspot_username : null,
             'hotspot_password' => $completed ? $purchase->hotspot_password : null,
+            'sent_to_phone'    => $completed && $sentToPhone,
             // No fixed expiry date up front — RouterOS's own time limit
             // only starts counting from first login, so there's nothing
             // truthful to quote yet. Describes the plan's limit(s) instead;

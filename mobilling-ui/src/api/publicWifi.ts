@@ -22,6 +22,7 @@ export interface PublicWifiPurchaseStatus {
   hotspot_password: string | null;
   plan: { duration_value: number | null; duration_unit: 'hours' | 'days' | 'weeks' | null; data_cap_mb: number | null } | null;
   local_login_host: string | null;
+  sent_to_phone: boolean;
 }
 
 export const getPublicWifiCheckoutInfo = (routerId: string) =>
