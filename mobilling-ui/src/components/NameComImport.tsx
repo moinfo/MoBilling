@@ -155,7 +155,8 @@ function LinkModal({ row, showAccount, onClose, onDone }: { row: NameComImportRo
         <Select label="Client" data={options} value={clientId}
           onChange={(v) => { setClientId(v); setPickedLabel(options.find((o) => o.value === v)?.label ?? null); }}
           searchValue={search} onSearchChange={setSearch} filter={({ options }) => options}
-          nothingFoundMessage="No client found" searchable clearable placeholder="Search name, email or phone" />
+          nothingFoundMessage="No client found" searchable clearable placeholder="Search name, email or phone"
+          comboboxProps={{ withinPortal: true, zIndex: 500 }} />
         <Button disabled={!clientId} loading={m.isPending} onClick={() => { setError(null); m.mutate(); }}>Link domain</Button>
       </Stack>
     </Modal>
