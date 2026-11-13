@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MikrotikRouter;
 use App\Models\User;
 use App\Models\WifiVoucherPurchase;
 use App\Notifications\WifiPayoutRequestedNotification;
@@ -36,6 +37,26 @@ class WifiEarningsController extends Controller
             'owed'            => round((float) (clone $this->baseQuery())->whereNull('settled_at')->sum('net_amount'), 2),
             'unsettled_count' => (clone $this->baseQuery())->whereNull('settled_at')->count(),
             'total_settled'   => round((float) (clone $this->baseQuery())->whereNotNull('settled_at')->sum('net_amount'), 2),
+        ]]);
+    }
+
+    /**
+     * Top-of-dashboard summary for a WiFi-hotspot tenant — fetched
+     * independently from the main GET /dashboard-summary (same pattern as
+     * MyMonth/MyPayroll on Dashboard.tsx), since that endpoint only knows
+     * about dashboard.* permissions and a wifi-only tenant has none of
+     * those — this is the one thing standing between them and a blank page.
+     */
+    public function dashboardSummary()
+    {
+        $completed = WifiVoucherPurchase::whereNotNull('completed_at');
+
+        return response()->json(['data' => [
+            'vouchers_sold'    => (clone $completed)->count(),
+            'total_revenue'    => round((float) (clone $completed)->sum('amount'), 2),
+            'unique_customers' => (clone $completed)->distinct('customer_phone')->count('customer_phone'),
+            'active_routers'   => MikrotikRouter::where('is_active', true)->count(),
+            'owed'             => round((float) (clone $this->baseQuery())->whereNull('settled_at')->sum('net_amount'), 2),
         ]]);
     }
 

@@ -519,6 +519,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:wifi_purchases.update')->post('/wifi-voucher-purchases/{wifi_voucher_purchase}/unblock', [\App\Http\Controllers\WifiVoucherPurchaseController::class, 'unblock']);
 
     Route::middleware('permission:wifi_purchases.read')->get('/wifi-earnings/summary', [\App\Http\Controllers\WifiEarningsController::class, 'summary']);
+    Route::middleware('permission:wifi_purchases.read')->get('/wifi-dashboard-summary', [\App\Http\Controllers\WifiEarningsController::class, 'dashboardSummary']);
     Route::middleware('permission:wifi_purchases.read')->get('/wifi-earnings', [\App\Http\Controllers\WifiEarningsController::class, 'index']);
     Route::middleware('permission:wifi_purchases.read')->post('/wifi-earnings/request-payout', [\App\Http\Controllers\WifiEarningsController::class, 'requestPayout']);
 

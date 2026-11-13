@@ -23,6 +23,17 @@ export interface WifiEarningRow {
 export const getWifiEarningsSummary = () =>
   api.get<{ data: WifiEarningsSummary }>('/wifi-earnings/summary');
 
+export interface WifiDashboardSummary {
+  vouchers_sold: number;
+  total_revenue: number;
+  unique_customers: number;
+  active_routers: number;
+  owed: number;
+}
+
+export const getWifiDashboardSummary = () =>
+  api.get<{ data: WifiDashboardSummary }>('/wifi-dashboard-summary');
+
 export const getWifiEarnings = (params?: { settled?: boolean; page?: number; per_page?: number }) =>
   api.get('/wifi-earnings', { params });
 
