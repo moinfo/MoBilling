@@ -7,6 +7,7 @@ use App\Jobs\Wifi\ProvisionWifiVoucherJob;
 use App\Models\MikrotikRouter;
 use App\Models\WifiPlan;
 use App\Models\WifiVoucherPurchase;
+use App\Notifications\WifiVoucherIssuedNotification;
 use App\Services\Mikrotik\RouterOsService;
 use Illuminate\Http\Request;
 
@@ -116,6 +117,47 @@ class WifiVoucherPurchaseController extends Controller
         ]);
 
         return new WifiVoucherPurchaseResource($wifi_voucher_purchase->fresh()->load(['router:id,name', 'plan:id,name']));
+    }
+
+    /**
+     * The exact SMS/WhatsApp text the customer would get — lets staff
+     * manually relay it (phone call, their own WhatsApp, etc.) when the
+     * tenant has no SMS/WhatsApp sending configured, without duplicating
+     * WifiVoucherIssuedNotification's message-formatting logic.
+     */
+    public function message(WifiVoucherPurchase $wifi_voucher_purchase)
+    {
+        abort_unless($wifi_voucher_purchase->hotspot_username, 422, 'This voucher has not been provisioned yet.');
+
+        $notification = new WifiVoucherIssuedNotification($wifi_voucher_purchase);
+
+        return response()->json(['data' => ['message' => $notification->toSms($wifi_voucher_purchase)]]);
+    }
+
+    /**
+     * Re-sends the voucher notification on demand — e.g. the tenant just
+     * turned SMS/WhatsApp on after the original send had nothing to go
+     * through (see WifiVoucherIssuedNotification::via()), or a transient
+     * send failure needs retrying.
+     */
+    public function resend(WifiVoucherPurchase $wifi_voucher_purchase)
+    {
+        abort_unless($wifi_voucher_purchase->hotspot_username, 422, 'This voucher has not been provisioned yet.');
+
+        $tenant = $wifi_voucher_purchase->tenant()->withoutGlobalScopes()->first();
+        if (!$tenant?->sms_enabled && !$tenant?->whatsapp_enabled) {
+            return response()->json([
+                'message' => 'SMS and WhatsApp are not enabled for this tenant, so there is nothing to resend through — enable one in Settings, or use "View message" to relay the code yourself.',
+            ], 422);
+        }
+
+        try {
+            $wifi_voucher_purchase->notify(new WifiVoucherIssuedNotification($wifi_voucher_purchase));
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Could not resend: ' . $e->getMessage()], 502);
+        }
+
+        return response()->json(['message' => 'Voucher resent to the customer.']);
     }
 
     public function unblock(WifiVoucherPurchase $wifi_voucher_purchase)

@@ -50,6 +50,12 @@ export interface WifiVoucherUsage {
 export const getWifiVoucherPurchaseUsage = (id: string) =>
   api.get<{ data: WifiVoucherUsage }>(`/wifi-voucher-purchases/${id}/usage`);
 
+export const getWifiVoucherPurchaseMessage = (id: string) =>
+  api.get<{ data: { message: string } }>(`/wifi-voucher-purchases/${id}/message`);
+
+export const resendWifiVoucherPurchase = (id: string) =>
+  api.post<{ message: string }>(`/wifi-voucher-purchases/${id}/resend`);
+
 export const blockWifiVoucherPurchase = (id: string, reason?: string) =>
   api.post<{ data: WifiVoucherPurchase }>(`/wifi-voucher-purchases/${id}/block`, { reason });
 

@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, Badge, TextInput, Select, Code, Button, Modal, Stack, Alert, ActionIcon, Tooltip, Progress, Loader } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, TextInput, Select, Code, Button, Modal, Stack, Alert, ActionIcon, Tooltip, Progress, Loader, CopyButton } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
-import { IconSearch, IconPlus, IconCheck, IconGauge, IconBan, IconLockOpen } from '@tabler/icons-react';
+import { IconSearch, IconPlus, IconCheck, IconGauge, IconBan, IconLockOpen, IconMessage, IconCopy, IconSend } from '@tabler/icons-react';
 import {
   getWifiVoucherPurchases, createManualWifiVoucherSale, getWifiVoucherPurchaseUsage,
+  getWifiVoucherPurchaseMessage, resendWifiVoucherPurchase,
   blockWifiVoucherPurchase, unblockWifiVoucherPurchase, WifiVoucherPurchase,
 } from '../api/wifiVoucherPurchases';
 import { getMikrotikRouters, MikrotikRouter } from '../api/mikrotikRouters';
@@ -44,6 +45,7 @@ export default function WifiVoucherPurchases() {
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [sellOpen, setSellOpen] = useState(false);
   const [usageFor, setUsageFor] = useState<WifiVoucherPurchase | null>(null);
+  const [messageFor, setMessageFor] = useState<WifiVoucherPurchase | null>(null);
 
   const { data: routersData } = useQuery({
     queryKey: ['mikrotik-routers-all'],
@@ -176,6 +178,13 @@ export default function WifiVoucherPurchases() {
                           </ActionIcon>
                         </Tooltip>
                       )}
+                      {p.hotspot_username && (
+                        <Tooltip label="Voucher message / resend">
+                          <ActionIcon variant="light" color="grape" onClick={() => setMessageFor(p)}>
+                            <IconMessage size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
                       {canBlock && p.hotspot_username && (
                         p.blocked_at ? (
                           <Tooltip label="Unblock">
@@ -220,7 +229,56 @@ export default function WifiVoucherPurchases() {
       <Modal opened={!!usageFor} onClose={() => setUsageFor(null)} title={`Usage — ${usageFor?.hotspot_username ?? ''}`} size="sm">
         {usageFor && <UsageDetails purchaseId={usageFor.id} />}
       </Modal>
+
+      <Modal opened={!!messageFor} onClose={() => setMessageFor(null)} title={`Voucher message — ${messageFor?.hotspot_username ?? ''}`} size="md">
+        {messageFor && <VoucherMessageDetails purchase={messageFor} />}
+      </Modal>
     </>
+  );
+}
+
+function VoucherMessageDetails({ purchase }: { purchase: WifiVoucherPurchase }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['wifi-voucher-message', purchase.id],
+    queryFn: () => getWifiVoucherPurchaseMessage(purchase.id),
+  });
+  const message = data?.data?.data?.message;
+
+  const resendMutation = useMutation({
+    mutationFn: () => resendWifiVoucherPurchase(purchase.id),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Resent', message: res.data.message, color: 'green', icon: <IconCheck size={16} /> });
+    },
+    onError: (err: any) => notifications.show({ title: 'Could not resend', message: err.response?.data?.message || 'Failed to resend', color: 'red' }),
+  });
+
+  if (isLoading) {
+    return <Group justify="center" py="lg"><Loader size="sm" /></Group>;
+  }
+  if (!message) {
+    return <Text c="dimmed" size="sm">Could not load the voucher message.</Text>;
+  }
+
+  return (
+    <Stack gap="sm">
+      <Alert color="blue" variant="light">
+        If automatic SMS/WhatsApp isn't set up for this tenant, copy this text and send it to{' '}
+        {purchase.customer_phone} yourself — or use "Resend" once SMS/WhatsApp is enabled.
+      </Alert>
+      <Code block style={{ whiteSpace: 'pre-wrap' }}>{message}</Code>
+      <Group justify="flex-end">
+        <CopyButton value={message}>
+          {({ copied, copy }) => (
+            <Button variant="default" leftSection={<IconCopy size={16} />} color={copied ? 'green' : undefined} onClick={copy}>
+              {copied ? 'Copied' : 'Copy text'}
+            </Button>
+          )}
+        </CopyButton>
+        <Button leftSection={<IconSend size={16} />} loading={resendMutation.isPending} onClick={() => resendMutation.mutate()}>
+          Resend via SMS/WhatsApp
+        </Button>
+      </Group>
+    </Stack>
   );
 }
 
