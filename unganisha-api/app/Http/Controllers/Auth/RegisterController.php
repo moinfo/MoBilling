@@ -23,7 +23,7 @@ class RegisterController extends Controller
             'email' => 'required|email|unique:users,email',
             'password' => ['required', 'confirmed', Password::min(8)],
             'phone' => 'nullable|string|max:20',
-            'product_tier' => 'nullable|in:general,reseller,lite',
+            'product_tier' => 'nullable|in:general,reseller,lite,wifi_hotspot',
         ]);
 
         return DB::transaction(function () use ($request, $provisioning) {

@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   IconRocket, IconUsers, IconLock, IconSun, IconMoon, IconArrowLeft,
-  IconBriefcase, IconServer2, IconCheck, IconFeather,
+  IconBriefcase, IconServer2, IconCheck, IconFeather, IconWifi,
 } from '@tabler/icons-react';
 
 const highlights = [
@@ -40,6 +40,13 @@ const productTiers = [
     title: 'MoBilling Complete',
     desc: 'Everything — invoicing, expenses, statutory compliance (NHIF/PAYE/VAT), collections, domains, hosting, HR and more.',
   },
+  {
+    value: 'wifi_hotspot' as const,
+    icon: IconWifi,
+    color: 'orange',
+    title: 'MoBilling WiFi Hotspot',
+    desc: 'Just the WiFi hotspot voucher-selling module — connect your MikroTik and start selling vouchers. Nothing else.',
+  },
 ];
 
 export default function Register() {
@@ -51,7 +58,7 @@ export default function Register() {
   const isDark = computedColorScheme === 'dark';
 
   const tierParam = searchParams.get('tier');
-  const initialTier = tierParam === 'reseller' || tierParam === 'lite' ? tierParam : 'general';
+  const initialTier = tierParam === 'reseller' || tierParam === 'lite' || tierParam === 'wifi_hotspot' ? tierParam : 'general';
 
   const form = useForm({
     initialValues: {
@@ -61,7 +68,7 @@ export default function Register() {
       phone: '',
       password: '',
       password_confirmation: '',
-      product_tier: initialTier as 'general' | 'reseller' | 'lite',
+      product_tier: initialTier as 'general' | 'reseller' | 'lite' | 'wifi_hotspot',
     },
     validate: {
       company_name: (v) => (v.length > 0 ? null : 'Company name is required'),
@@ -212,7 +219,7 @@ export default function Register() {
             Set up your business in under 2 minutes
           </Text>
 
-          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" mb="md">
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm" mb="md">
             {productTiers.map((tier) => {
               const selected = form.values.product_tier === tier.value;
               return (

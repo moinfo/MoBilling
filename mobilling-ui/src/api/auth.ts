@@ -94,7 +94,7 @@ export interface RegisterData {
   password: string;
   password_confirmation: string;
   phone?: string;
-  product_tier?: 'general' | 'reseller' | 'lite';
+  product_tier?: 'general' | 'reseller' | 'lite' | 'wifi_hotspot';
 }
 
 export const login = (data: LoginData) =>
