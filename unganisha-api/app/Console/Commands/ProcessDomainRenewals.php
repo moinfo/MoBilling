@@ -12,15 +12,20 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Generate renewal invoices for auto-renew domains expiring within the window,
- * then pay them from the client's credit wallet when the balance covers the
- * full amount — auto-renew only completes while the wallet is funded. The
+ * Generate renewal invoices for domains expiring within the window — for
+ * auto-renew domains, also pay them from the client's credit wallet when
+ * the balance covers the full amount (auto-renew only completes while the
+ * wallet is funded). Manual-renew domains get the same invoice + email but
+ * are never auto-paid — the client was relying solely on
+ * SendDomainExpiryReminders' "reply 1 on WhatsApp" self-service flow (or
+ * staff creating one by hand) to ever get an actual invoice, which left
+ * domains expiring with nothing concrete for the client to pay. The
  * registry renewal itself fires when the invoice is paid (DocumentObserver).
  */
 class ProcessDomainRenewals extends Command
 {
     protected $signature = 'domains:process-renewals {--window=45 : Days before expiry to invoice}';
-    protected $description = 'Create renewal invoices for auto-renew domains nearing expiry and pay them from wallet credit';
+    protected $description = 'Create renewal invoices for domains nearing expiry (auto-renew ones are also paid from wallet credit)';
 
     public function handle(DomainBillingService $billing): int
     {
@@ -35,10 +40,13 @@ class ProcessDomainRenewals extends Command
             ->with('client')
             // Parallel mode: WHMCS invoices renewals of imported domains.
             ->when(config('whmcs.parallel_mode'), fn ($q) => $q->whereNull('legacy_id'))
-            ->where('status', 'active')
-            ->where('auto_renew', true)
+            ->whereIn('status', ['active', 'expired'])
             ->whereNotNull('expires_at')
-            ->whereDate('expires_at', '<=', now()->addDays($window))
+            // Symmetric floor: a domain expired well past the window is
+            // almost certainly outside the registry's redemption grace
+            // period already (lost or needs a manual redeem, not a normal
+            // renewal) — don't invoice/email a client for one of those.
+            ->whereBetween('expires_at', [now()->subDays($window), now()->addDays($window)])
             ->get();
 
         foreach ($domains as $domain) {
@@ -50,12 +58,14 @@ class ProcessDomainRenewals extends Command
             }
 
             // An open renewal invoice already exists: retry the wallet each day
-            // (the client may have topped up since), otherwise leave it unpaid.
+            // for auto-renew domains (the client may have topped up since),
+            // otherwise leave it unpaid — there's nothing more to do until the
+            // client pays, so don't re-create or re-email it every run.
             $openInvoiceId = $domain->meta['renewal_document_id'] ?? null;
             if ($openInvoiceId) {
                 $open = Document::withoutGlobalScopes()->find($openInvoiceId);
                 if ($open && !in_array($open->status, ['paid', 'cancelled'])) {
-                    if ($this->payFromWallet($domain, $open)) {
+                    if ($domain->auto_renew && $this->payFromWallet($domain, $open)) {
                         $walletPaid++;
                         $this->info("Wallet-paid open renewal: {$domain->name} -> {$open->document_number}");
                     } else {
@@ -69,14 +79,15 @@ class ProcessDomainRenewals extends Command
                 $document = $billing->createRenewalInvoice($domain, 1);
                 $created++;
 
-                if ($this->payFromWallet($domain, $document)) {
+                if ($domain->auto_renew && $this->payFromWallet($domain, $document)) {
                     $walletPaid++;
                     $this->info("Auto-renewed from wallet: {$domain->name} -> {$document->document_number}");
                     continue; // paid — no "please pay" email
                 }
 
-                // Wallet can't cover it: email the invoice so the client can
-                // pay it (or top up) themselves.
+                // Not auto-renew, or wallet can't cover it: email the invoice
+                // so the client has something concrete to pay (or top up
+                // their wallet) themselves.
                 if ($domain->client?->email) {
                     try {
                         $domain->client->notify(new InvoiceSentNotification($document));
@@ -84,7 +95,7 @@ class ProcessDomainRenewals extends Command
                         Log::warning("Renewal invoice email failed for {$domain->name}: {$e->getMessage()}");
                     }
                 }
-                $this->info("Invoiced (wallet insufficient): {$domain->name} -> {$document->document_number}");
+                $this->info(($domain->auto_renew ? "Invoiced (wallet insufficient): " : "Invoiced (manual renew): ") . "{$domain->name} -> {$document->document_number}");
             } catch (\Throwable $e) {
                 $failed++;
                 $this->warn("Failed {$domain->name}: {$e->getMessage()}");
