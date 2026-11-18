@@ -119,6 +119,17 @@ class DomainController extends Controller
                     ->orWhere('meta->sponsoring_registrar', '!=', $handle));
         }
 
+        if ($request->filled('invoice_status')) {
+            match ($request->invoice_status) {
+                'none'   => $query->whereNull('meta->renewal_document_id'),
+                'paid'   => $query->whereIn('meta->renewal_document_id', fn ($q) => $q
+                    ->select('id')->from('documents')->where('status', 'paid')),
+                'unpaid' => $query->whereNotNull('meta->renewal_document_id')->whereIn('meta->renewal_document_id', fn ($q) => $q
+                    ->select('id')->from('documents')->whereNotIn('status', ['paid', 'cancelled'])),
+                default  => null,
+            };
+        }
+
         if ($request->filled('registrar')) {
             $linked = fn ($q) => $q->whereNotNull('meta->namecom')->orWhere('meta->registrar', 'namecom');
             match ($request->registrar) {

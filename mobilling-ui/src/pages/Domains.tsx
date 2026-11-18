@@ -101,6 +101,7 @@ export default function Domains() {
   const [nameComTab, setNameComTab] = useState<string | undefined>(undefined);
   const [bulkRun, setBulkRun] = useState<null | 'sync' | 'lookup'>(null);
   const [registrarFilter, setRegistrarFilter] = useState('');
+  const [invoiceFilter, setInvoiceFilter] = useState('');
   const [ncRegister, setNcRegister] = useState<DomainRecord | null>(null);
   const [logsFor, setLogsFor] = useState<DomainRecord | null>(null);
   const [renewFor, setRenewFor] = useState<DomainRecord | null>(null);
@@ -115,6 +116,7 @@ export default function Domains() {
   if (oursFilter) params.ours = oursFilter;
   if (search) params.search = search;
   if (registrarFilter) params.registrar = registrarFilter;
+  if (invoiceFilter) params.invoice_status = invoiceFilter;
 
   // stat card click: toggle the corresponding filter
   const filterByStatus = (status: string) => {
@@ -414,6 +416,13 @@ export default function Domains() {
               { value: 'other', label: 'At another registrar' },
             ]} />
         )}
+        <Select size="xs" placeholder="Invoice: All" clearable w={160}
+          value={invoiceFilter || null} onChange={(v) => { setInvoiceFilter(v ?? ''); setPage(1); }}
+          data={[
+            { value: 'none', label: 'No invoice' },
+            { value: 'unpaid', label: 'Unpaid invoice' },
+            { value: 'paid', label: 'Paid' },
+          ]} />
       </Group>
 
       {isLoading ? (
