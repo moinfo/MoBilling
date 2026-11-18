@@ -139,6 +139,25 @@ class DomainController extends Controller
         $defaultId = ($accounts->firstWhere('is_default', true) ?? $accounts->first())?->id;
         $page->getCollection()->each(fn ($d) => $d->setAttribute('registrar_view', \App\Services\Registrar\DomainRegistrarLookup::view($d, $labels, $defaultId)));
 
+        // The latest invoice raised for this domain (registration or
+        // renewal) — DomainBillingService stamps its id onto meta every
+        // time it creates one, so staff can see at a glance whether one
+        // exists at all and whether it's actually been paid.
+        $documentIds = $page->getCollection()->pluck('meta.renewal_document_id')->filter()->unique()->values();
+        $documents = $documentIds->isEmpty()
+            ? collect()
+            : \App\Models\Document::withoutGlobalScopes()->whereIn('id', $documentIds)->get(['id', 'document_number', 'status', 'total', 'due_date'])->keyBy('id');
+        $page->getCollection()->each(function ($d) use ($documents) {
+            $doc = $documents->get(data_get($d->meta, 'renewal_document_id'));
+            $d->setAttribute('latest_invoice', $doc ? [
+                'id'       => $doc->id,
+                'number'   => $doc->document_number,
+                'status'   => $doc->status,
+                'total'    => (float) $doc->total,
+                'due_date' => $doc->due_date,
+            ] : null);
+        });
+
         return response()->json(['data' => $page]);
     }
 

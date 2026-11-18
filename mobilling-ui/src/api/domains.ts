@@ -13,6 +13,14 @@ export interface DomainRecord {
   created_at: string;
   /** Staff list only: where the domain lives. */
   registrar_view?: RegistrarView;
+  /** The latest registration/renewal invoice raised for this domain, if any. */
+  latest_invoice: {
+    id: string;
+    number: string;
+    status: 'draft' | 'sent' | 'paid' | 'cancelled' | 'overdue' | string;
+    total: number;
+    due_date: string | null;
+  } | null;
 }
 
 export interface RegistrarView {

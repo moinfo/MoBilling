@@ -80,6 +80,10 @@ function RegistrarBadge({ v, canCheck, domainId, onChecked }: { v?: RegistrarVie
   );
 }
 
+const INVOICE_STATUS_COLOR: Record<string, string> = {
+  draft: 'gray', sent: 'blue', overdue: 'orange', partial: 'yellow', paid: 'green', cancelled: 'red',
+};
+
 export default function Domains() {
   const { can } = usePermissions();
   const qc = useQueryClient();
@@ -428,6 +432,7 @@ export default function Domains() {
                   <Table.Th>Registered</Table.Th>
                   <Table.Th>Expires</Table.Th>
                   <Table.Th>Auto-renew</Table.Th>
+                  <Table.Th>Invoice</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th></Table.Th>
                 </Table.Tr>
@@ -477,6 +482,17 @@ export default function Domains() {
                         ) : d.auto_renew
                           ? <IconCheck size={15} color="var(--mantine-color-green-6)" />
                           : <IconX size={15} color="var(--mantine-color-gray-5)" />}
+                      </Table.Td>
+                      <Table.Td>
+                        {d.latest_invoice ? (
+                          <Tooltip label={`${formatCurrency(d.latest_invoice.total)}${d.latest_invoice.due_date ? ` — due ${d.latest_invoice.due_date}` : ''}`}>
+                            <Badge size="sm" variant="light" color={INVOICE_STATUS_COLOR[d.latest_invoice.status] ?? 'gray'}>
+                              {d.latest_invoice.number} · {d.latest_invoice.status}
+                            </Badge>
+                          </Tooltip>
+                        ) : (
+                          <Text size="sm" c="dimmed">No invoice</Text>
+                        )}
                       </Table.Td>
                       <Table.Td>
                         {d.meta?.awaiting_manual_registration ? (
