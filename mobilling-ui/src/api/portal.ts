@@ -206,6 +206,14 @@ export const subscribePortalHostingBackup = (id: string) =>
 export const portalHostingSso = (id: string, opts?: { service?: 'cpanel' | 'webmail'; goto?: string }) =>
   api.post<{ url: string }>(`/portal/hosting/${id}/sso`, opts ?? {});
 
+export interface PortalHostingRenewPlanOption {
+  id: string;
+  name: string;
+  price: number;
+  billing_cycle: string;
+  is_current: boolean;
+}
+
 export interface PortalHostingRenewPreview {
   product_name: string;
   client_name: string | null;
@@ -215,6 +223,9 @@ export interface PortalHostingRenewPreview {
   discount_amount: number;
   total: number;
   due_date: string;
+  /** Other plans in the same group the client can renew into instead of the current one. */
+  plans: PortalHostingRenewPlanOption[];
+  current_product_service_id: string | null;
 }
 
 // Bundles the hosting plan and its domain (if any) into one renewal
@@ -225,11 +236,16 @@ export interface PortalHostingRenewBlockedError {
   existing_invoice: { document_id: string; document_number: string; total: number } | null;
 }
 
-export const getPortalHostingRenewPreview = (id: string) =>
-  api.get<{ data: PortalHostingRenewPreview }>(`/portal/hosting/${id}/renew-preview`);
+export const getPortalHostingRenewPreview = (id: string, productServiceId?: string) =>
+  api.get<{ data: PortalHostingRenewPreview }>(`/portal/hosting/${id}/renew-preview`, {
+    params: productServiceId ? { product_service_id: productServiceId } : undefined,
+  });
 
-export const portalRenewHosting = (id: string) =>
-  api.post<{ data: { document_id: string; document_number: string; total: number }; message: string }>(`/portal/hosting/${id}/renew`);
+export const portalRenewHosting = (id: string, productServiceId?: string) =>
+  api.post<{ data: { document_id: string; document_number: string; total: number }; message: string }>(
+    `/portal/hosting/${id}/renew`,
+    productServiceId ? { product_service_id: productServiceId } : undefined,
+  );
 
 export interface PortalHostingDetail {
   id: string;

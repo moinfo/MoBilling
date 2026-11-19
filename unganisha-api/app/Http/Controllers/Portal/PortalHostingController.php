@@ -951,13 +951,215 @@ class PortalHostingController extends Controller
     {
         $this->guardAccount($request, $hostingAccount, adminOnly: false);
 
+        $sub = $bundler->hostingPlanSubscription($hostingAccount);
+        $plans = ($sub && $sub->productService) ? $this->renewalPlanChoices($request, $sub) : [];
+        $chosen = $this->resolveRenewalPlanChoice($request, $sub);
+
         try {
-            $preview = $bundler->preview($hostingAccount, selfService: true, includeDomain: false);
+            $preview = $chosen
+                ? $this->previewPlanSwitchRenewal($sub, $chosen)
+                : $bundler->preview($hostingAccount, selfService: true, includeDomain: false);
         } catch (\RuntimeException $e) {
             return $this->renewBlockedResponse($hostingAccount, $bundler, $e);
         }
 
-        return response()->json(['data' => $preview]);
+        return response()->json(['data' => $preview + [
+            'plans' => $plans,
+            'current_product_service_id' => $sub?->product_service_id,
+        ]]);
+    }
+
+    /**
+     * The hosting plans the client can pick for this renewal — same group
+     * (category) as their current plan, same catalog filters
+     * upgradeOptions() uses. Unlike a mid-cycle upgrade, there's no
+     * proration math here: picking a different plan here means "renew into
+     * this plan for a full new cycle", not "switch now and pay the
+     * difference".
+     */
+    private function renewalPlanChoices(Request $request, \App\Models\ClientSubscription $sub): array
+    {
+        return \App\Models\ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $request->user()->tenant_id)
+            ->where('is_active', true)
+            ->where('portal_visible', true)
+            ->where('provisioning_type', 'whm_cpanel')
+            ->where('category', $sub->productService?->category)
+            ->where(fn ($q) => $q->whereNull('code')->orWhere('code', 'not like', 'WHMCS-P%-%'))
+            ->orderBy('price')
+            ->get()
+            ->unique('name')
+            ->values()
+            ->map(fn ($p) => [
+                'id'            => $p->id,
+                'name'          => $p->name,
+                'price'         => (float) $p->price,
+                'billing_cycle' => $p->billing_cycle,
+                'is_current'    => $p->id === $sub->product_service_id,
+            ])->all();
+    }
+
+    /** Validates an optional ?product_service_id against the current subscription; null if absent or unchanged. */
+    private function resolveRenewalPlanChoice(Request $request, ?\App\Models\ClientSubscription $sub): ?\App\Models\ProductService
+    {
+        $chosenId = $request->get('product_service_id');
+        if (!$chosenId || !$sub || $chosenId === $sub->product_service_id) {
+            return null;
+        }
+
+        $new = \App\Models\ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $request->user()->tenant_id)
+            ->where('id', $chosenId)
+            ->where('is_active', true)
+            ->where('portal_visible', true)
+            ->where('provisioning_type', 'whm_cpanel')
+            ->first();
+        abort_unless($new, 422, 'That plan is not available.');
+        abort_if($sub->productService?->category && $new->category !== $sub->productService->category, 422,
+            'Please choose a plan from the same group.');
+
+        return $new;
+    }
+
+    /**
+     * Preview for "renew into a different plan" — full one-cycle price of
+     * the NEW plan (never prorated: this starts a fresh term, not a
+     * mid-cycle swap). The next expiry mirrors exactly what
+     * SubscriptionActivationService::activateFor() will compute on payment,
+     * so the preview can't drift from what actually happens.
+     */
+    private function previewPlanSwitchRenewal(\App\Models\ClientSubscription $sub, \App\Models\ProductService $new): array
+    {
+        [$dueDate, $serviceFrom, $serviceTo] = $this->renewalPeriodFor($sub, $new);
+        $qty = max(1, (int) $sub->quantity);
+        $subtotal = round((float) $new->price * $qty, 2);
+        $taxPercent = (float) ($new->tax_percent ?? 0);
+        $taxAmount = round($subtotal * $taxPercent / 100, 2);
+
+        return [
+            'product_name' => $new->name,
+            'client_name'  => $sub->client()->withoutGlobalScopes()->value('name'),
+            'line_items'   => [[
+                'description'  => "Renew {$sub->label} — {$new->name} (switching from {$sub->productService?->name})",
+                'quantity'     => $qty,
+                'price'        => (float) $new->price,
+                'total'        => $subtotal,
+                'service_from' => $serviceFrom->toDateString(),
+                'service_to'   => $serviceTo->toDateString(),
+            ]],
+            'subtotal'        => $subtotal,
+            'tax_amount'      => $taxAmount,
+            'discount_amount' => 0.0,
+            'total'           => round($subtotal + $taxAmount, 2),
+            'due_date'        => $dueDate->toDateString(),
+        ];
+    }
+
+    /**
+     * Mirrors SubscriptionActivationService::activateFor() exactly (same
+     * base date, same per-cycle add) so the invoice's service period —
+     * and the expiry it implies — never disagrees with what paying it
+     * will actually produce.
+     */
+    private function renewalPeriodFor(\App\Models\ClientSubscription $sub, \App\Models\ProductService $new): array
+    {
+        $base = $sub->expire_date ?? $sub->start_date ?? \Illuminate\Support\Carbon::today();
+        $serviceFrom = $base->copy();
+        $serviceTo = (match ($new->billing_cycle) {
+            'monthly'     => $base->copy()->addMonth(),
+            'quarterly'   => $base->copy()->addMonths(3),
+            'half_yearly' => $base->copy()->addMonths(6),
+            'yearly'      => $base->copy()->addYear(),
+            default       => $base->copy(),
+        })->subDay();
+
+        return [$base->copy(), $serviceFrom, $serviceTo];
+    }
+
+    /**
+     * Builds the actual renewal-with-plan-change invoice. Deliberately
+     * bypasses RecurringInvoiceService::generateForSubscriptions() — that
+     * always prices off $sub->productService (the CURRENT plan) — and
+     * never touches $sub->product_service_id itself before payment: the
+     * client could abandon an unpaid renewal, and switching the live plan
+     * (and dispatching the WHM package change) first would leave their
+     * still-active current term running on the wrong package. The actual
+     * switch is deferred to DocumentObserver's pending_plan_change handler,
+     * exactly like a normal paid mid-cycle upgrade.
+     */
+    private function generatePlanSwitchRenewal(\App\Models\ClientSubscription $sub, \App\Models\ProductService $new): \App\Models\Document
+    {
+        if (app(\App\Services\Hosting\RenewalBundleService::class)->hasCurrentInvoice($sub)) {
+            throw new \RuntimeException('Everything for this domain already has a current invoice — nothing left to bill.');
+        }
+
+        [$dueDate, $serviceFrom, $serviceTo] = $this->renewalPeriodFor($sub, $new);
+        $qty = max(1, (int) $sub->quantity);
+        $subtotal = round((float) $new->price * $qty, 2);
+        $taxPercent = (float) ($new->tax_percent ?? 0);
+        $taxAmount = round($subtotal * $taxPercent / 100, 2);
+        $total = round($subtotal + $taxAmount, 2);
+
+        $tenant = \App\Models\Tenant::find($sub->tenant_id);
+        $client = \App\Models\Client::withoutGlobalScopes()->find($sub->client_id);
+        abort_unless($tenant && $client, 422, 'Tenant or client not found for this subscription.');
+
+        return \Illuminate\Support\Facades\DB::transaction(function () use (
+            $sub, $new, $tenant, $client, $qty, $subtotal, $taxPercent, $taxAmount, $total, $dueDate, $serviceFrom, $serviceTo
+        ) {
+            $document = \App\Models\Document::withoutGlobalScopes()->create([
+                'tenant_id'       => $tenant->id,
+                'client_id'       => $client->id,
+                'type'            => 'invoice',
+                'document_number' => app(\App\Services\DocumentNumberService::class)->generate('invoice', $tenant->id),
+                'date'            => now()->toDateString(),
+                'due_date'        => $dueDate->toDateString(),
+                'subtotal'        => $subtotal,
+                'discount_amount' => 0,
+                'tax_amount'      => $taxAmount,
+                'total'           => $total,
+                'status'          => 'sent',
+                'notes'           => "Renewal (plan change): {$sub->productService?->name} \u{2192} {$new->name} ({$sub->label})",
+            ]);
+
+            $document->items()->create([
+                'product_service_id' => $new->id,
+                'item_type'    => 'service',
+                'description'  => "Renew {$sub->label} — {$new->name} (switching from {$sub->productService?->name})",
+                'quantity'     => $qty,
+                'price'        => $new->price,
+                'tax_percent'  => $taxPercent,
+                'tax_amount'   => $taxAmount,
+                'total'        => $total,
+                'service_from' => $serviceFrom->toDateString(),
+                'service_to'   => $serviceTo->toDateString(),
+            ]);
+
+            \App\Models\RecurringInvoiceLog::withoutGlobalScopes()->create([
+                'tenant_id'              => $tenant->id,
+                'client_id'              => $client->id,
+                'product_service_id'     => $sub->product_service_id,
+                'client_subscription_id' => $sub->id,
+                'document_id'            => $document->id,
+                'next_bill_date'         => $dueDate,
+                'invoice_created_at'     => now(),
+                'reminders_sent'         => [],
+            ]);
+
+            // Supersede any earlier unpaid plan-change invoice, then record
+            // this one — DocumentObserver applies the actual switch (+ WHM
+            // package change) once it's paid, same as a mid-cycle upgrade.
+            $priorDocId = $sub->metadata['pending_plan_change']['document_id'] ?? null;
+            if ($priorDocId) {
+                \App\Models\Document::withoutGlobalScopes()->where('id', $priorDocId)
+                    ->whereNotIn('status', ['paid', 'cancelled'])->update(['status' => 'cancelled']);
+            }
+            $meta = $sub->metadata ?? [];
+            $meta['pending_plan_change'] = ['product_service_id' => $new->id, 'document_id' => $document->id];
+            $sub->update(['metadata' => $meta]);
+
+            return $document;
+        });
     }
 
     /**
@@ -984,8 +1186,13 @@ class PortalHostingController extends Controller
     {
         $this->guardAccount($request, $hostingAccount, adminOnly: false);
 
+        $sub = $bundler->hostingPlanSubscription($hostingAccount);
+        $chosen = $this->resolveRenewalPlanChoice($request, $sub);
+
         try {
-            $document = $bundler->generate($hostingAccount, selfService: true, includeDomain: false);
+            $document = $chosen
+                ? $this->generatePlanSwitchRenewal($sub, $chosen)
+                : $bundler->generate($hostingAccount, selfService: true, includeDomain: false);
         } catch (\RuntimeException $e) {
             return $this->renewBlockedResponse($hostingAccount, $bundler, $e);
         }

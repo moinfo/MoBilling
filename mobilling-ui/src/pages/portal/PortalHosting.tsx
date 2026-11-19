@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Text, Group, Code, Tooltip, Modal, Divider, Loader, Center,
+  Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Text, Group, Code, Tooltip, Modal, Divider, Loader, Center, Select,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -179,16 +179,21 @@ export default function PortalHosting() {
 function RenewHostingModal({ account, onClose }: { account: PortalHostingAccount | null; onClose: () => void }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [planId, setPlanId] = useState<string | null>(null);
+  useEffect(() => { setPlanId(null); }, [account?.id]);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['portal-hosting-renew-preview', account?.id],
-    queryFn: () => getPortalHostingRenewPreview(account!.id),
+    queryKey: ['portal-hosting-renew-preview', account?.id, planId],
+    queryFn: () => getPortalHostingRenewPreview(account!.id, planId ?? undefined),
     enabled: !!account,
   });
   const preview = data?.data?.data;
+  const planOptions = (preview?.plans ?? []).map((p) => ({
+    value: p.id, label: `${p.name} — TZS ${p.price.toLocaleString()}/${p.billing_cycle}${p.is_current ? ' (current)' : ''}`,
+  }));
 
   const renewMutation = useMutation({
-    mutationFn: () => portalRenewHosting(account!.id),
+    mutationFn: () => portalRenewHosting(account!.id, planId ?? undefined),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['portal-hosting'] });
       notifications.show({ title: 'Renewal invoice created', message: res.data.message, color: 'green', autoClose: 8000 });
@@ -223,6 +228,15 @@ function RenewHostingModal({ account, onClose }: { account: PortalHostingAccount
         })()}
         {preview && (
           <>
+            {planOptions.length > 1 && (
+              <Select
+                label="Hosting package"
+                value={planId ?? preview.current_product_service_id}
+                onChange={setPlanId}
+                data={planOptions}
+                allowDeselect={false}
+              />
+            )}
             <Text size="sm" c="dimmed">{preview.product_name}</Text>
             {preview.line_items.map((li, i) => (
               <Group key={i} justify="space-between">
