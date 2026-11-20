@@ -747,6 +747,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/mysql-databases', [\App\Http\Controllers\HostingAccountController::class, 'mysqlDatabases']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/dns-zone', [\App\Http\Controllers\HostingAccountController::class, 'dnsZone']);
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/dns-zone', [\App\Http\Controllers\HostingAccountController::class, 'addDnsRecord']);
+    Route::middleware('permission:hosting.change_package')->put('/hosting-accounts/dns-zone', [\App\Http\Controllers\HostingAccountController::class, 'editDnsRecord']);
+    Route::middleware('permission:hosting.change_package')->delete('/hosting-accounts/dns-zone', [\App\Http\Controllers\HostingAccountController::class, 'removeDnsRecord']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'cronJobs']);
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'storeCronJob']);
     Route::middleware('permission:hosting.change_package')->put('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'updateCronJob']);
@@ -867,6 +869,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/domains/{domain}/dns-zone',         [\App\Http\Controllers\DomainController::class, 'dnsZone']);
         Route::post('/domains/{domain}/dns-zone',        [\App\Http\Controllers\DomainController::class, 'createDnsZone']);
         Route::post('/domains/{domain}/dns-zone/records', [\App\Http\Controllers\DomainController::class, 'addDnsRecord']);
+        Route::put('/domains/{domain}/dns-zone/records', [\App\Http\Controllers\DomainController::class, 'editDnsRecord']);
+        Route::delete('/domains/{domain}/dns-zone/records', [\App\Http\Controllers\DomainController::class, 'removeDnsRecord']);
     });
     // Linode integration (tenant's own Linode account). Token is write-only.
     Route::middleware('permission:linode.read')->prefix('linode')->group(function () {
@@ -1296,6 +1300,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/domains/{domain}/epp-code', [\App\Http\Controllers\Portal\PortalDomainController::class, 'eppCode']);
     Route::get('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'nameservers']);
     Route::get('/domains/{domain}/dns-zone', [\App\Http\Controllers\Portal\PortalDomainController::class, 'dnsZone']);
+    Route::post('/domains/{domain}/dns-zone', [\App\Http\Controllers\Portal\PortalDomainController::class, 'createDnsZone']);
+    Route::post('/domains/{domain}/dns-zone/records', [\App\Http\Controllers\Portal\PortalDomainController::class, 'addDnsRecord']);
+    Route::put('/domains/{domain}/dns-zone/records', [\App\Http\Controllers\Portal\PortalDomainController::class, 'editDnsRecord']);
+    Route::delete('/domains/{domain}/dns-zone/records', [\App\Http\Controllers\Portal\PortalDomainController::class, 'removeDnsRecord']);
     Route::put('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'updateNameservers']);
     Route::put('/domains/{domain}/auto-renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'setAutoRenew']);
     Route::get('/reseller/status', [\App\Http\Controllers\Portal\PortalResellerController::class, 'status']);

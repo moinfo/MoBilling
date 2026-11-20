@@ -377,7 +377,7 @@ export const unlockDomainTransfer = (id: string) => api.post<{ data: any; messag
 export const getDomainTransferCode = (id: string) => api.post<{ auth_code: string }>(`/domains/${id}/transfer/auth-code`);
 
 // ── WHM DNS for a domain with no hosting account of its own (FRED/.tz domains mainly) ──
-export interface DomainDnsServerOption { id: string; name: string; hostname: string }
+export interface DomainDnsServerOption { id: string; name: string; hostname: string; nameservers: string[] }
 export const getDomainDnsServers = () => api.get<{ data: DomainDnsServerOption[] }>('/domains/dns-servers');
 
 export interface DomainDnsZoneStatus {
@@ -385,6 +385,7 @@ export interface DomainDnsZoneStatus {
   server_id?: string;
   server_name?: string;
   ip?: string;
+  nameservers?: string[];
 }
 export const getDomainDnsZoneStatus = (domainId: string) =>
   api.get<{ data: DomainDnsZoneStatus }>(`/domains/${domainId}/dns-zone-status`);
@@ -405,3 +406,15 @@ export interface DomainAddDnsRecordPayload {
 }
 export const addDomainDnsRecord = (domainId: string, data: DomainAddDnsRecordPayload) =>
   api.post<{ message: string }>(`/domains/${domainId}/dns-zone/records`, data);
+
+export interface DomainEditDnsRecordPayload {
+  old: DomainDnsZoneRecord;
+  ttl: number;
+  value?: string;
+  priority?: number;
+}
+export const editDomainDnsRecord = (domainId: string, data: DomainEditDnsRecordPayload) =>
+  api.put<{ message: string }>(`/domains/${domainId}/dns-zone/records`, data);
+
+export const removeDomainDnsRecord = (domainId: string, old: DomainDnsZoneRecord) =>
+  api.delete<{ message: string }>(`/domains/${domainId}/dns-zone/records`, { data: { old } });

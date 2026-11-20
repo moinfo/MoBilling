@@ -1004,7 +1004,7 @@ class DomainController extends Controller
         $tenantId = auth()->user()->tenant_id;
 
         $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
-            ->orderBy('name')->get(['id', 'name', 'hostname']);
+            ->orderBy('name')->get(['id', 'name', 'hostname', 'nameservers']);
 
         return response()->json(['data' => $servers]);
     }
@@ -1035,6 +1035,7 @@ class DomainController extends Controller
             'server_id'   => $server->id,
             'server_name' => $server->name,
             'ip'          => data_get($domain->meta, 'whm_dns.ip'),
+            'nameservers' => $server->nameservers ?? [],
         ]]);
     }
 
@@ -1115,12 +1116,7 @@ class DomainController extends Controller
         return response()->json(['data' => $records]);
     }
 
-    /**
-     * Adds one DNS zone record for this domain. Add-only, deliberately —
-     * see WhmService::addDnsRecord()'s doc comment for why edit/delete
-     * aren't exposed (WHM's line-number-based edit/remove calls proved
-     * unreliable during live verification elsewhere in this codebase).
-     */
+    /** Adds one DNS zone record for this domain. */
     public function addDnsRecord(Request $request, Domain $domain)
     {
         $tenantId = auth()->user()->tenant_id;
@@ -1139,13 +1135,7 @@ class DomainController extends Controller
         ]);
 
         $name = str_ends_with($data['name'], '.') ? $data['name'] : "{$data['name']}.";
-
-        $fields = match ($data['type']) {
-            'A', 'AAAA' => ['address' => $data['value']],
-            'CNAME' => ['cname' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
-            'TXT' => ['txtdata' => $data['value']],
-            'MX' => ['preference' => $data['priority'], 'exchange' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
-        };
+        $fields = WhmService::zoneRecordFields($data['type'], $data['value'] ?? null, $data['priority'] ?? null);
 
         try {
             (new WhmService($server))->addDnsRecord($domain->name, $data['type'], $name, $data['ttl'], $fields);
@@ -1154,5 +1144,85 @@ class DomainController extends Controller
         }
 
         return response()->json(['message' => 'DNS record added.']);
+    }
+
+    /**
+     * Edits one existing DNS zone record's TTL/value (type and name are
+     * fixed — picking a record to edit, not retargeting it). `old` must be
+     * the exact {type, name, data} the client last saw for this record
+     * (dnsZone()'s own shape) — WhmService::editDnsRecord() re-verifies it
+     * against the live zone immediately before mutating, so a record that
+     * changed or was removed since the page was loaded is refused rather
+     * than mis-targeted. See that method's doc comment for how this was
+     * verified reliable live, after two past incidents with a naive
+     * line-number approach.
+     */
+    public function editDnsRecord(Request $request, Domain $domain)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $serverId = data_get($domain->meta, 'whm_dns.server_id');
+        abort_unless($serverId, 404, 'No DNS zone has been created for this domain yet.');
+
+        $server = Server::where('tenant_id', $tenantId)->find($serverId);
+        abort_unless($server, 404, 'The server this domain\'s DNS zone was created on is no longer available.');
+
+        $data = $this->validateEditOrRemove($request, true);
+        $name = self::fullHostname($data['old']['name'], $domain->name);
+        $fields = WhmService::zoneRecordFields($data['old']['type'], $data['value'] ?? null, $data['priority'] ?? null);
+
+        try {
+            (new WhmService($server))->editDnsRecord($domain->name, $data['old'], $data['old']['type'], $name, $data['ttl'], $fields);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'DNS record updated.']);
+    }
+
+    /** Removes one existing DNS zone record — same live re-verified targeting as editDnsRecord() above. */
+    public function removeDnsRecord(Request $request, Domain $domain)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $serverId = data_get($domain->meta, 'whm_dns.server_id');
+        abort_unless($serverId, 404, 'No DNS zone has been created for this domain yet.');
+
+        $server = Server::where('tenant_id', $tenantId)->find($serverId);
+        abort_unless($server, 404, 'The server this domain\'s DNS zone was created on is no longer available.');
+
+        $data = $this->validateEditOrRemove($request, false);
+
+        try {
+            (new WhmService($server))->removeDnsRecord($domain->name, $data['old']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'DNS record removed.']);
+    }
+
+    /** Shared edit/remove request shape — SOA/NS (the zone's own structural records) are never editable/removable here. */
+    private function validateEditOrRemove(Request $request, bool $withNewValues): array
+    {
+        $rules = [
+            'old.type'   => ['required', Rule::in(['A', 'AAAA', 'CNAME', 'TXT', 'MX'])],
+            'old.name'   => 'required|string|max:255',
+            'old.data'   => 'required|array|min:1',
+            'old.data.*' => 'required|string',
+        ];
+        if ($withNewValues) {
+            $rules += [
+                'ttl'      => 'required|integer|min:60|max:2592000',
+                'value'    => 'required_unless:old.type,MX|nullable|string|max:1024',
+                'priority' => 'required_if:old.type,MX|nullable|integer|min:0|max:65535',
+            ];
+        }
+
+        return $request->validate($rules);
+    }
+
+    /** dnsZone()'s `name` is already the full "sub.domain.tld." for a root record, or a bare label ("www") for a sub-record — normalise to the full hostname addzonerecord/editzonerecord both require. */
+    private static function fullHostname(string $name, string $domainName): string
+    {
+        return str_ends_with($name, '.') ? $name : "{$name}.{$domainName}.";
     }
 }

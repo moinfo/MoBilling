@@ -539,18 +539,19 @@ class WhmService
      * just the label — addzonerecord takes it that way, not relative to
      * $domain the way a UI might otherwise assume.
      *
-     * Deliberately no updateDnsRecord()/deleteDnsRecord() here: WHM's
-     * editzonerecord/removezonerecord are line-number-based, and the line
-     * numbers parse_dns_zone reports do NOT match what getzonerecord/
+     * For editing/removing an existing record, see editDnsRecord()/
+     * removeDnsRecord() below — NOT a naive line number from this file's
+     * own dnsZone()/parse_dns_zone: those line numbers do NOT match what
      * editzonerecord/removezonerecord themselves use for the same zone at
-     * the same moment — confirmed live, twice, the hard way (a real
-     * customer's `_acme-challenge` and `_cpanel-dcv-test-record` TXT
-     * records were each overwritten/deleted by mistake this way, then
-     * restored). The only line-number lookup that proved reliable was a
-     * linear getzonerecord scan immediately before acting, re-verifying
-     * the record's identity on that same line right before mutating it —
-     * too slow and too fragile to expose as a normal UI action. Add-only,
-     * until a safer identify-and-target mechanism is found.
+     * the same moment — confirmed live, twice, the hard way, in an earlier
+     * version of this feature (a real customer's `_acme-challenge` and
+     * `_cpanel-dcv-test-record` TXT records were each overwritten/deleted
+     * by mistake this way, then restored). editDnsRecord()/
+     * removeDnsRecord() instead re-derive the true line via a live
+     * getzonerecord scan immediately before mutating — re-verified live
+     * against a disposable test zone on 2026-11-21 (add/edit/remove,
+     * duplicate-record disambiguation, and a deliberately-stale identity
+     * that correctly refused) before being exposed in any UI.
      */
     public function addDnsRecord(string $domain, string $type, string $name, int $ttl, array $data): array
     {
@@ -561,6 +562,130 @@ class WhmService
             'ttl' => $ttl,
             'class' => 'IN',
         ] + $data);
+    }
+
+    /**
+     * Edits one existing DNS zone record. $old identifies which record to
+     * target — {type, name, data[]} exactly as dnsZone() returned it when
+     * the caller last read the zone — and is re-verified against a LIVE
+     * getzonerecord scan taken this call, not the caller's (possibly
+     * stale) copy, immediately before editzonerecord fires. This is the
+     * only targeting method confirmed reliable live, on a disposable test
+     * zone (several add/edit/remove cycles, 2026-11-21): parse_dns_zone's
+     * line numbers never correspond to what editzonerecord/removezonerecord
+     * expect — see addDnsRecord()'s doc comment for the two real-customer
+     * incidents that cost. If $old no longer matches anything live (zone
+     * changed since the caller last read it, or the identity given is
+     * wrong), this throws rather than guess — it will never edit the
+     * wrong line.
+     *
+     * @param array{type: string, name: string, data: string[]} $old
+     */
+    public function editDnsRecord(string $domain, array $old, string $type, string $name, int $ttl, array $data): array
+    {
+        $line = $this->findLiveLine($domain, $old);
+        if ($line === null) {
+            throw new WhmApiException('editzonerecord', "That record no longer matches what's live in the zone — please refresh and try again.");
+        }
+
+        return $this->call('editzonerecord', [
+            'domain' => $domain,
+            'line'   => $line,
+            'name'   => $name,
+            'class'  => 'IN',
+            'ttl'    => $ttl,
+            'type'   => $type,
+        ] + $data);
+    }
+
+    /**
+     * Removes one existing DNS zone record. Same live-rescan targeting as
+     * editDnsRecord() above — see its doc comment. Note removezonerecord
+     * takes `zone`, not `domain` (confirmed against the official WHM API
+     * spec — editzonerecord's own parameters are undocumented there, which
+     * is exactly why this whole targeting mechanism is tested live against
+     * a disposable zone rather than assumed from the docs alone).
+     *
+     * @param array{type: string, name: string, data: string[]} $old
+     */
+    public function removeDnsRecord(string $domain, array $old): array
+    {
+        $line = $this->findLiveLine($domain, $old);
+        if ($line === null) {
+            throw new WhmApiException('removezonerecord', "That record no longer matches what's live in the zone — please refresh and try again.");
+        }
+
+        return $this->call('removezonerecord', ['zone' => $domain, 'line' => $line]);
+    }
+
+    /**
+     * The one and only reliable way to find a record's true line number
+     * for editzonerecord/removezonerecord: scan getzonerecord line by
+     * line (never parse_dns_zone's line_index — confirmed live not to
+     * match), matching on type + name + value. Bounded by double the
+     * zone's own current record count (plus headroom for the SOA's extra
+     * physical lines and the leading comment/$TTL lines) so this stays a
+     * handful of calls even on a large zone.
+     */
+    private function findLiveLine(string $domain, array $old): ?int
+    {
+        $maxLine = count($this->dnsZone($domain)) * 2 + 20;
+        $wantName = rtrim($old['name'], '.');
+        $wantValue = implode('|', array_map(fn ($v) => rtrim((string) $v, '.'), $old['data']));
+
+        for ($line = 1; $line <= $maxLine; $line++) {
+            try {
+                $res = $this->call('getzonerecord', ['domain' => $domain, 'line' => $line]);
+            } catch (WhmApiException) {
+                continue; // a gap (SOA's extra physical lines) or past the end — keep scanning up to $maxLine
+            }
+
+            $recs = (array) data_get($res, 'data.record', []);
+            if (count($recs) !== 1) {
+                continue; // SOA / malformed lines report back differently — never a candidate to edit/remove anyway
+            }
+
+            $rec = $recs[0];
+            if (($rec['type'] ?? null) !== $old['type']) {
+                continue;
+            }
+            if (strcasecmp(rtrim((string) ($rec['dname_raw'] ?? $rec['name'] ?? ''), '.'), $wantName) !== 0) {
+                continue;
+            }
+            if (self::liveRecordValue($rec, $old['type']) === $wantValue) {
+                return $line;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * addzonerecord/editzonerecord's type-specific fields from a single
+     * free-text value (+ MX priority) — the one place this mapping lives,
+     * shared by every add/edit call site instead of repeating the same
+     * match() in each controller.
+     */
+    public static function zoneRecordFields(string $type, ?string $value, ?int $priority = null): array
+    {
+        return match ($type) {
+            'A', 'AAAA' => ['address' => $value],
+            'CNAME'     => ['cname' => str_ends_with((string) $value, '.') ? $value : "{$value}."],
+            'TXT'       => ['txtdata' => $value],
+            'MX'        => ['preference' => $priority, 'exchange' => str_ends_with((string) $value, '.') ? $value : "{$value}."],
+        };
+    }
+
+    /** getzonerecord's type-specific value field(s), normalised to the same "a|b" shape dnsZone()'s data[] uses. */
+    private static function liveRecordValue(array $rec, string $type): string
+    {
+        return match ($type) {
+            'A', 'AAAA' => rtrim((string) ($rec['address'] ?? ''), '.'),
+            'CNAME'     => rtrim((string) ($rec['cname'] ?? ''), '.'),
+            'TXT'       => (string) ($rec['txtdata'] ?? ''),
+            'MX'        => rtrim((string) ($rec['preference'] ?? ''), '.') . '|' . rtrim((string) ($rec['exchange'] ?? ''), '.'),
+            default     => '',
+        };
     }
 
     /** Every cPanel account on this server, per WHM — the server's own truth. */

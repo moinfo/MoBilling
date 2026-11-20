@@ -254,6 +254,20 @@ export interface AddDnsRecordPayload {
 export const addDnsRecord = (data: AddDnsRecordPayload) =>
   api.post<{ message: string }>('/hosting-accounts/dns-zone', data);
 
+export interface EditDnsRecordPayload {
+  server_id: string;
+  domain: string;
+  old: DnsZoneRecord;
+  ttl: number;
+  value?: string;
+  priority?: number;
+}
+export const editDnsRecord = (data: EditDnsRecordPayload) =>
+  api.put<{ message: string }>('/hosting-accounts/dns-zone', data);
+
+export const removeDnsRecord = (server_id: string, domain: string, old: DnsZoneRecord) =>
+  api.delete<{ message: string }>('/hosting-accounts/dns-zone', { data: { server_id, domain, old } });
+
 export interface CronJobRow {
   linekey: number;
   minute: string;

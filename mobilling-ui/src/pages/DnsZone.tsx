@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import { Stack, Paper, Title, Text, Group, Select, Loader } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { IconWorldWww } from '@tabler/icons-react';
-import { discoverHostingAccounts, getDnsZone, addDnsRecord, DiscoveredAccount } from '../api/hosting';
+import { discoverHostingAccounts, getDnsZone, addDnsRecord, editDnsRecord, removeDnsRecord, DiscoveredAccount } from '../api/hosting';
 import { usePermissions } from '../hooks/usePermissions';
-import WhmDnsSection, { WhmAddDnsRecordInput } from '../components/Hosting/WhmDnsSection';
+import WhmDnsSection, { WhmAddDnsRecordInput, WhmEditDnsRecordInput } from '../components/Hosting/WhmDnsSection';
 
 /**
  * A hosting account's DNS zone (WHM's parse_dns_zone/addzonerecord, via
@@ -46,6 +46,16 @@ export default function DnsZone() {
     qc.invalidateQueries({ queryKey: ['dns-zone', serverId, domain] });
   };
 
+  const handleEdit = async (v: WhmEditDnsRecordInput) => {
+    await editDnsRecord({ server_id: serverId!, domain: domain!, ...v });
+    qc.invalidateQueries({ queryKey: ['dns-zone', serverId, domain] });
+  };
+
+  const handleRemove = async (old: Parameters<typeof removeDnsRecord>[2]) => {
+    await removeDnsRecord(serverId!, domain!, old);
+    qc.invalidateQueries({ queryKey: ['dns-zone', serverId, domain] });
+  };
+
   return (
     <Stack gap="md">
       <Title order={3}>
@@ -70,6 +80,8 @@ export default function DnsZone() {
           isError={isError}
           canAdd={canAdd}
           onAddRecord={handleAdd}
+          onEditRecord={handleEdit}
+          onRemoveRecord={handleRemove}
         />
       ) : (
         <Text size="sm" c="dimmed">Pick a domain to see its DNS zone straight from WHM.</Text>

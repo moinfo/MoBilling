@@ -15,11 +15,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconWorld, IconRefresh, IconKey, IconCopy, IconLock, IconLockOpen,
   IconShieldCheck, IconArrowLeft, IconHistory, IconServer, IconRotateClockwise, IconWorldCheck, IconCloudDownload,
+  IconInfoCircle,
 } from '@tabler/icons-react';
 import {
   getDomain, getDomainLogs, renewDomain, retryDomain, syncDomain, confirmManualRegistration, getDomainAuthInfo, setDomainAutoRenew,
   getDomainNameservers, getDomainTransfer, lockDomainTransfer, unlockDomainTransfer, getDomainTransferCode, updateDomainNameservers, describeDomainAction, getDomainRegistrarInfo,
   getDomainDnsServers, getDomainDnsZoneStatus, createDomainDnsZone, getDomainDnsZone, addDomainDnsRecord,
+  editDomainDnsRecord, removeDomainDnsRecord,
   DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { usePermissions } from '../hooks/usePermissions';
@@ -516,9 +518,9 @@ function NameserversCard({ domainId, domainStatus }: { domainId: string; domainS
  * DNS on our own WHM server for a domain with no hosting account of its
  * own here — mainly FRED/.tz domains, per the owner's "we have WHM, we can
  * add [a zone] and manage [DNS] there" request. Creation is a one-time
- * step (WHM's `adddns`); the records table/add-record modal below it is
- * the exact same add-only WhmDnsSection used on the hosting-account DNS
- * page — reused rather than duplicated.
+ * step (WHM's `adddns`); the records table/add/edit/remove UI below it is
+ * the exact same WhmDnsSection used on the hosting-account DNS page —
+ * reused rather than duplicated.
  */
 function WhmDnsCard({ domainId, domainName, canManage }: { domainId: string; domainName: string; canManage: boolean }) {
   const qc = useQueryClient();
@@ -538,6 +540,7 @@ function WhmDnsCard({ domainId, domainName, canManage }: { domainId: string; dom
     enabled: canManage && status?.exists === false,
   });
   const servers = serversData?.data?.data ?? [];
+  const selectedServer = servers.find((s) => s.id === serverId);
 
   const createMutation = useMutation({
     mutationFn: () => createDomainDnsZone(domainId, { server_id: serverId!, ip: ip.trim(), point_to_server: pointToServer }),
@@ -562,6 +565,18 @@ function WhmDnsCard({ domainId, domainName, canManage }: { domainId: string; dom
     return res;
   };
 
+  const handleEditRecord = async (v: Parameters<typeof editDomainDnsRecord>[1]) => {
+    const res = await editDomainDnsRecord(domainId, v);
+    qc.invalidateQueries({ queryKey: ['domain-dns-zone', domainId] });
+    return res;
+  };
+
+  const handleRemoveRecord = async (old: Parameters<typeof removeDomainDnsRecord>[1]) => {
+    const res = await removeDomainDnsRecord(domainId, old);
+    qc.invalidateQueries({ queryKey: ['domain-dns-zone', domainId] });
+    return res;
+  };
+
   return (
     <Paper withBorder radius="md" p="lg">
       <Group gap="xs" mb="md"><IconServer size={18} /><Title order={5}>Manage DNS (our server)</Title></Group>
@@ -573,9 +588,7 @@ function WhmDnsCard({ domainId, domainName, canManage }: { domainId: string; dom
           <Stack gap="sm">
             <Text size="sm" c="dimmed">
               This creates a new, empty DNS zone for <b>{domainName}</b> on one of our own servers — not at
-              the registry. Records added here are add-only (no delete or edit), the same as our other
-              registrar integrations. If this domain's nameservers don't already point at that server, records
-              added here won't take effect until they do — use "Change Nameservers" above once you're ready.
+              the registry.
             </Text>
             <Select
               label="Server" placeholder="Pick a server" required
@@ -583,6 +596,15 @@ function WhmDnsCard({ domainId, domainName, canManage }: { domainId: string; dom
               value={serverId} onChange={setServerId}
               disabled={serversLoading} maw={420}
             />
+            {selectedServer && (
+              <Alert color="orange" variant="light" icon={<IconInfoCircle size={16} />}>
+                For records added here to actually take effect, <b>{domainName}</b>'s nameservers must be set
+                to {selectedServer.nameservers.map((ns, i) => (
+                  <span key={ns}><Code>{ns}</Code>{i < selectedServer.nameservers.length - 1 ? ', ' : ''}</span>
+                ))} — use "Change Nameservers" above if they aren't already. Until then, this domain is still
+                resolved by whatever nameservers it has now, and anything added here is a silent no-op.
+              </Alert>
+            )}
             <TextInput
               label="IPv4 Address" placeholder="203.0.113.5" required
               value={ip} onChange={(e) => setIp(e.currentTarget.value)} maw={420}
@@ -605,9 +627,18 @@ function WhmDnsCard({ domainId, domainName, canManage }: { domainId: string; dom
       ) : (
         <Stack gap="sm">
           <Text size="xs" c="dimmed">
-            Zone hosted on <b>{status.server_name}</b>{status.ip ? ` (${status.ip})` : ''}. If this domain's
-            nameservers don't already point here, these records won't take effect until they do.
+            Zone hosted on <b>{status.server_name}</b>{status.ip ? ` (${status.ip})` : ''}.
           </Text>
+          {!!status.nameservers?.length && (
+            <Alert color="orange" variant="light" icon={<IconInfoCircle size={16} />} py={6}>
+              <Text size="xs">
+                These records only take effect while <b>{domainName}</b>'s nameservers are{' '}
+                {status.nameservers.map((ns, i) => (
+                  <span key={ns}><Code>{ns}</Code>{i < status.nameservers!.length - 1 ? ', ' : ''}</span>
+                ))}. If they're set to anything else, this zone is a silent no-op.
+              </Text>
+            </Alert>
+          )}
           <WhmDnsSection
             domain={domainName}
             records={records}
@@ -615,6 +646,8 @@ function WhmDnsCard({ domainId, domainName, canManage }: { domainId: string; dom
             isError={zoneError}
             canAdd={canManage}
             onAddRecord={handleAddRecord}
+            onEditRecord={handleEditRecord}
+            onRemoveRecord={handleRemoveRecord}
           />
         </Stack>
       )}

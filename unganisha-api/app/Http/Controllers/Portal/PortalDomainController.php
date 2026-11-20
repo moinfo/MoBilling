@@ -12,6 +12,7 @@ use App\Services\Registrar\DomainBillingService;
 use App\Services\Registrar\DomainRegistrarManager;
 use App\Exceptions\WhmApiException;
 use App\Models\HostingAccount;
+use App\Models\Server;
 use App\Services\WhmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -187,31 +188,279 @@ class PortalDomainController extends Controller
     }
 
     /**
-     * Read-only DNS zone — only when this domain is actually hosted with us
-     * (a hosting_accounts row with a matching domain name); we have no way
-     * to reach a zone that lives on someone else's server.
+     * The WHM server behind a domain's DNS zone, if we have one: either a
+     * real hosting_accounts row (zone was created automatically when the
+     * account was provisioned), or a standalone zone a client/staff member
+     * created through createDnsZone() below (meta.whm_dns — same mechanism
+     * DomainController's staff "Manage DNS (our server)" card uses). We
+     * never probe/guess beyond these two recorded facts — same reasoning
+     * as DomainController's WHM DNS section header comment.
      */
-    public function dnsZone(Request $request, Domain $domain)
+    private function resolveZoneServer(Domain $domain): ?Server
     {
-        abort_unless($domain->client_id === $request->user()->client_id, 404);
-
         $hostingAccount = HostingAccount::withoutGlobalScopes()
             ->where('tenant_id', $domain->tenant_id)
             ->where('domain', $domain->name)
             ->with('server')
             ->first();
+        if ($hostingAccount && $hostingAccount->server) {
+            return $hostingAccount->server;
+        }
 
-        if (!$hostingAccount || !$hostingAccount->server) {
-            return response()->json(['data' => [], 'hosted_with_us' => false]);
+        $serverId = data_get($domain->meta, 'whm_dns.server_id');
+        if (!$serverId) {
+            return null;
+        }
+
+        return Server::where('tenant_id', $domain->tenant_id)->find($serverId);
+    }
+
+    /**
+     * The single server a client's self-service "create a DNS zone" should
+     * use — never shown to the client by name. Every tenant today has
+     * exactly one active WHM server; if that ever stops being true we bail
+     * out to "contact us" rather than guess which one, same caution as
+     * everywhere else in this codebase that resolves a server implicitly.
+     */
+    private function soleActiveServer(string $tenantId): ?Server
+    {
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)->get();
+        return $servers->count() === 1 ? $servers->first() : null;
+    }
+
+    /**
+     * DNS zone — records straight from WHM when we have one for this
+     * domain (either an auto-provisioned hosting account zone, or a
+     * standalone zone created below), plus whether the client can create
+     * one themselves when we don't.
+     */
+    public function dnsZone(Request $request, Domain $domain)
+    {
+        abort_unless($domain->client_id === $request->user()->client_id, 404);
+
+        $server = $this->resolveZoneServer($domain);
+        if (!$server) {
+            $soleServer = $this->soleActiveServer($domain->tenant_id);
+            return response()->json([
+                'data'               => [],
+                'hosted_with_us'     => false,
+                'can_create'         => (bool) $soleServer,
+                // Shown to the client before they create a zone — never the server's name/hostname,
+                // just the nameservers their domain must already use for the zone to take effect.
+                'create_nameservers' => $soleServer?->nameservers ?? [],
+            ]);
         }
 
         try {
-            $records = (new WhmService($hostingAccount->server))->dnsZone($domain->name);
+            $records = (new WhmService($server))->dnsZone($domain->name);
         } catch (WhmApiException $e) {
             return response()->json(['message' => 'Could not reach the server right now — please try again shortly.'], 422);
         }
 
-        return response()->json(['data' => $records, 'hosted_with_us' => true]);
+        return response()->json([
+            'data'           => $records,
+            'hosted_with_us' => true,
+            'can_create'     => false,
+            // Ongoing reminder once a zone exists — records here are silent no-ops until these are the live nameservers.
+            'nameservers'    => $server->nameservers ?? [],
+        ]);
+    }
+
+    /**
+     * Self-service: creates a standalone DNS-only zone for a domain with no
+     * hosting account of its own here — mirrors DomainController's staff
+     * "Manage DNS (our server)" card (WhmService::createDnsZone(), WHM's
+     * `adddns`), minus the server picker: the client never sees which
+     * server or its name, just the IP to point their domain at (see
+     * soleActiveServer()'s doc comment for why we refuse rather than guess
+     * when that's ambiguous).
+     */
+    public function createDnsZone(Request $request, Domain $domain)
+    {
+        $user = $request->user();
+        abort_unless($domain->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can set up DNS.');
+
+        if ($this->resolveZoneServer($domain)) {
+            return response()->json(['message' => 'A DNS zone already exists for this domain here.'], 422);
+        }
+
+        $server = $this->soleActiveServer($domain->tenant_id);
+        if (!$server) {
+            return response()->json(['message' => 'DNS setup isn\'t available right now — please contact us.'], 422);
+        }
+
+        $data = $request->validate([
+            'ip'              => ['required', 'ip'],
+            'point_to_server' => ['nullable', 'boolean'],
+        ]);
+
+        $whm = new WhmService($server);
+        try {
+            $whm->createDnsZone($domain->name, $data['ip']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        $domain->update(['meta' => array_merge($domain->meta ?? [], [
+            'whm_dns' => [
+                'server_id'       => $server->id,
+                'ip'              => $data['ip'],
+                'created_at'      => now()->toIso8601String(),
+                'created_by_portal_user' => $user->id,
+            ],
+        ])]);
+
+        $wwwAdded = false;
+        if (!array_key_exists('point_to_server', $data) || $data['point_to_server']) {
+            try {
+                $whm->addDnsRecord($domain->name, 'A', "www.{$domain->name}.", 14400, ['address' => $data['ip']]);
+                $wwwAdded = true;
+            } catch (WhmApiException) {
+                // Non-fatal — the zone itself was created; they can add it by hand below.
+            }
+        }
+
+        \App\Models\DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'whm_dns_zone_created_portal',
+            'request'   => ['by_portal_user' => $user->id, 'ip' => $data['ip']],
+            'status'    => 'success',
+        ]);
+
+        return response()->json([
+            'message' => 'DNS zone created.',
+            'data'    => ['www_record_added' => $wwwAdded],
+        ], 201);
+    }
+
+    /**
+     * Adds one DNS zone record for the client's own domain. Add-only,
+     * deliberately — see WhmService::addDnsRecord()'s doc comment for why
+     * editing/removing a specific record isn't exposed.
+     */
+    public function addDnsRecord(Request $request, Domain $domain)
+    {
+        $user = $request->user();
+        abort_unless($domain->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can manage DNS records.');
+
+        $server = $this->resolveZoneServer($domain);
+        abort_unless($server, 404, 'No DNS zone has been created for this domain yet.');
+
+        $data = $request->validate([
+            'type'     => ['required', Rule::in(['A', 'AAAA', 'CNAME', 'TXT', 'MX'])],
+            'name'     => 'required|string|max:255',
+            'ttl'      => 'required|integer|min:60|max:2592000',
+            'value'    => 'required_unless:type,MX|nullable|string|max:1024',
+            'priority' => 'required_if:type,MX|nullable|integer|min:0|max:65535',
+        ]);
+
+        $name = str_ends_with($data['name'], '.') ? $data['name'] : "{$data['name']}.";
+        $fields = WhmService::zoneRecordFields($data['type'], $data['value'] ?? null, $data['priority'] ?? null);
+
+        try {
+            (new WhmService($server))->addDnsRecord($domain->name, $data['type'], $name, $data['ttl'], $fields);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the record: ' . $e->getMessage()], 422);
+        }
+
+        \App\Models\DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'whm_dns_record_added_portal',
+            'request'   => ['by_portal_user' => $user->id, 'type' => $data['type'], 'name' => $name],
+            'status'    => 'success',
+        ]);
+
+        return response()->json(['message' => 'DNS record added.'], 201);
+    }
+
+    /**
+     * Edits one existing DNS zone record's TTL/value (type/name fixed —
+     * see WhmService::editDnsRecord()'s doc comment for how `old` is
+     * re-verified against the live zone immediately before mutating, so
+     * a record changed/removed since the client last read it is refused
+     * rather than mis-targeted).
+     */
+    public function editDnsRecord(Request $request, Domain $domain)
+    {
+        $user = $request->user();
+        abort_unless($domain->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can manage DNS records.');
+
+        $server = $this->resolveZoneServer($domain);
+        abort_unless($server, 404, 'No DNS zone has been created for this domain yet.');
+
+        $data = $this->validateEditOrRemove($request, true);
+        $name = str_ends_with($data['old']['name'], '.') ? $data['old']['name'] : "{$data['old']['name']}.{$domain->name}.";
+        $fields = WhmService::zoneRecordFields($data['old']['type'], $data['value'] ?? null, $data['priority'] ?? null);
+
+        try {
+            (new WhmService($server))->editDnsRecord($domain->name, $data['old'], $data['old']['type'], $name, $data['ttl'], $fields);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        \App\Models\DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'whm_dns_record_edited_portal',
+            'request'   => ['by_portal_user' => $user->id, 'old' => $data['old'], 'new' => ['ttl' => $data['ttl'], 'value' => $data['value'] ?? null, 'priority' => $data['priority'] ?? null]],
+            'status'    => 'success',
+        ]);
+
+        return response()->json(['message' => 'DNS record updated.']);
+    }
+
+    /** Removes one existing DNS zone record — same live re-verified targeting as editDnsRecord() above. */
+    public function removeDnsRecord(Request $request, Domain $domain)
+    {
+        $user = $request->user();
+        abort_unless($domain->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can manage DNS records.');
+
+        $server = $this->resolveZoneServer($domain);
+        abort_unless($server, 404, 'No DNS zone has been created for this domain yet.');
+
+        $data = $this->validateEditOrRemove($request, false);
+
+        try {
+            (new WhmService($server))->removeDnsRecord($domain->name, $data['old']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        \App\Models\DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'whm_dns_record_removed_portal',
+            'request'   => ['by_portal_user' => $user->id, 'old' => $data['old']],
+            'status'    => 'success',
+        ]);
+
+        return response()->json(['message' => 'DNS record removed.']);
+    }
+
+    /** Shared edit/remove request shape — SOA/NS (the zone's own structural records) are never editable/removable here. */
+    private function validateEditOrRemove(Request $request, bool $withNewValues): array
+    {
+        $rules = [
+            'old.type'   => ['required', Rule::in(['A', 'AAAA', 'CNAME', 'TXT', 'MX'])],
+            'old.name'   => 'required|string|max:255',
+            'old.data'   => 'required|array|min:1',
+            'old.data.*' => 'required|string',
+        ];
+        if ($withNewValues) {
+            $rules += [
+                'ttl'      => 'required|integer|min:60|max:2592000',
+                'value'    => 'required_unless:old.type,MX|nullable|string|max:1024',
+                'priority' => 'required_if:old.type,MX|nullable|integer|min:0|max:65535',
+            ];
+        }
+
+        return $request->validate($rules);
     }
 
     /** Change nameservers (portal admins). Safe for shared nssets — this domain only. */

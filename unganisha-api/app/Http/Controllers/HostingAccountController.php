@@ -603,13 +603,7 @@ class HostingAccountController extends Controller
         return response()->json(['data' => $records]);
     }
 
-    /**
-     * Adds one DNS zone record. Add-only, deliberately — see
-     * WhmService::addDnsRecord()'s doc comment for why edit/delete aren't
-     * exposed here (WHM's line-number-based edit/remove calls proved
-     * unreliable during live verification: two real records were
-     * accidentally overwritten/deleted before this was caught and reverted).
-     */
+    /** Adds one DNS zone record. */
     public function addDnsRecord(Request $request)
     {
         $tenantId = auth()->user()->tenant_id;
@@ -626,13 +620,7 @@ class HostingAccountController extends Controller
 
         $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
         $name = str_ends_with($data['name'], '.') ? $data['name'] : "{$data['name']}.";
-
-        $fields = match ($data['type']) {
-            'A', 'AAAA' => ['address' => $data['value']],
-            'CNAME' => ['cname' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
-            'TXT' => ['txtdata' => $data['value']],
-            'MX' => ['preference' => $data['priority'], 'exchange' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
-        };
+        $fields = WhmService::zoneRecordFields($data['type'], $data['value'] ?? null, $data['priority'] ?? null);
 
         try {
             (new WhmService($server))->addDnsRecord($data['domain'], $data['type'], $name, $data['ttl'], $fields);
@@ -641,6 +629,73 @@ class HostingAccountController extends Controller
         }
 
         return response()->json(['message' => 'DNS record added.']);
+    }
+
+    /**
+     * Edits one existing DNS zone record's TTL/value. `old` must be the
+     * exact {type, name, data} the client last saw (dnsZone()'s own
+     * shape) — WhmService::editDnsRecord() re-verifies it against the
+     * live zone immediately before mutating, refusing rather than
+     * mis-targeting if the zone changed since. See that method's doc
+     * comment for how this was verified reliable, live, after two past
+     * incidents with a naive line-number approach.
+     */
+    public function editDnsRecord(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $data = $this->validateEditOrRemove($request, true);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+        $name = str_ends_with($data['old']['name'], '.') ? $data['old']['name'] : "{$data['old']['name']}.{$data['domain']}.";
+        $fields = WhmService::zoneRecordFields($data['old']['type'], $data['value'] ?? null, $data['priority'] ?? null);
+
+        try {
+            (new WhmService($server))->editDnsRecord($data['domain'], $data['old'], $data['old']['type'], $name, $data['ttl'], $fields);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'DNS record updated.']);
+    }
+
+    /** Removes one existing DNS zone record — same live re-verified targeting as editDnsRecord() above. */
+    public function removeDnsRecord(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $data = $this->validateEditOrRemove($request, false);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->removeDnsRecord($data['domain'], $data['old']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'DNS record removed.']);
+    }
+
+    /** Shared edit/remove request shape — SOA/NS (the zone's own structural records) are never editable/removable here. */
+    private function validateEditOrRemove(Request $request, bool $withNewValues): array
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $rules = [
+            'server_id'  => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'domain'     => 'required|string|max:255',
+            'old.type'   => ['required', Rule::in(['A', 'AAAA', 'CNAME', 'TXT', 'MX'])],
+            'old.name'   => 'required|string|max:255',
+            'old.data'   => 'required|array|min:1',
+            'old.data.*' => 'required|string',
+        ];
+        if ($withNewValues) {
+            $rules += [
+                'ttl'      => 'required|integer|min:60|max:2592000',
+                'value'    => 'required_unless:old.type,MX|nullable|string|max:1024',
+                'priority' => 'required_if:old.type,MX|nullable|integer|min:0|max:65535',
+            ];
+        }
+
+        return $request->validate($rules);
     }
 
     /** One account's cron jobs — WhmService::cronJobs() (cPanel API2's Cron::listcron). */

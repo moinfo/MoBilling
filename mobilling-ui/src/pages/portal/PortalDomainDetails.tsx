@@ -5,7 +5,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, LoadingOverlay, Button, Grid,
   UnstyledButton, Collapse, Anchor, Switch, Alert, Code, CopyButton, Modal,
-  NumberInput, Divider, Timeline, Center, Loader, TextInput, Table,
+  NumberInput, Divider, Timeline, Center, Loader, TextInput, Checkbox,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -19,7 +19,9 @@ import {
 import {
   getPortalDomainDetail, portalRenewDomain, portalSetAutoRenew, portalGetEppCode, getPortalTransfer, portalLockDomain, portalUnlockDomain, portalTransferCode,
   getPortalDomainNameservers, updatePortalDomainNameservers, getPortalDomainDnsZone, PortalDomainDetail,
+  createPortalDomainDnsZone, addPortalDomainDnsRecord, editPortalDomainDnsRecord, removePortalDomainDnsRecord,
 } from '../../api/portal';
+import WhmDnsSection from '../../components/Hosting/WhmDnsSection';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../branding';
 
@@ -351,7 +353,7 @@ export default function PortalDomainDetails() {
             )}
 
             {section === 'dns' && (
-              <DnsZoneSection domainId={d.id} domainName={d.name} />
+              <DnsZoneSection domainId={d.id} domainName={d.name} isPortalAdmin={isPortalAdmin} />
             )}
 
             {section === 'addons' && (
@@ -553,25 +555,65 @@ function NameserversSection({ domainId, isPortalAdmin }: { domainId: string; isP
   );
 }
 
-const dnsTypeColors: Record<string, string> = {
-  A: 'blue', AAAA: 'blue', CNAME: 'grape', MX: 'orange', TXT: 'teal',
-  NS: 'gray', SOA: 'gray', SRV: 'violet',
-};
+/**
+ * DNS Records tab. Two cases:
+ *  - This domain already has a zone of ours (either an auto-provisioned
+ *    hosting-account zone, or one the client/staff created below) — show
+ *    the live records, with add/edit/remove for portal admins.
+ *  - It doesn't — a portal admin can create one themselves on our server,
+ *    same mechanism as the staff "Manage DNS (our server)" card, minus
+ *    the server picker: they never see which server or its name, just the
+ *    IP to point the domain at.
+ * Edit/remove re-verify the exact record against the live zone right
+ * before mutating (see WhmDnsSection's doc comment) — never a cached line
+ * number, after that cost two real customer records once before this
+ * safer mechanism was built and verified live.
+ */
+function DnsZoneSection({ domainId, domainName, isPortalAdmin }: { domainId: string; domainName: string; isPortalAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [ip, setIp] = useState('');
+  const [pointToServer, setPointToServer] = useState(true);
 
-function DnsZoneSection({ domainId, domainName }: { domainId: string; domainName: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['portal-domain-dns', domainId],
     queryFn: () => getPortalDomainDnsZone(domainId),
   });
   const records = data?.data?.data ?? [];
   const hostedWithUs = data?.data?.hosted_with_us ?? false;
+  const canCreate = data?.data?.can_create ?? false;
+  const createNameservers = data?.data?.create_nameservers ?? [];
+  const liveNameservers = data?.data?.nameservers ?? [];
+
+  const createMutation = useMutation({
+    mutationFn: () => createPortalDomainDnsZone(domainId, { ip: ip.trim(), point_to_server: pointToServer }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-domain-dns', domainId] });
+      notifications.show({ title: 'DNS zone created', message: res.data.message, color: 'green' });
+    },
+    onError: (e: any) => notifications.show({ title: 'Error', message: e?.response?.data?.message ?? 'Could not create the DNS zone.', color: 'red' }),
+  });
+
+  const handleAdd = async (v: Parameters<typeof addPortalDomainDnsRecord>[1]) => {
+    const res = await addPortalDomainDnsRecord(domainId, v);
+    qc.invalidateQueries({ queryKey: ['portal-domain-dns', domainId] });
+    return res;
+  };
+  const handleEdit = async (v: Parameters<typeof editPortalDomainDnsRecord>[1]) => {
+    const res = await editPortalDomainDnsRecord(domainId, v);
+    qc.invalidateQueries({ queryKey: ['portal-domain-dns', domainId] });
+    return res;
+  };
+  const handleRemove = async (old: Parameters<typeof removePortalDomainDnsRecord>[1]) => {
+    const res = await removePortalDomainDnsRecord(domainId, old);
+    qc.invalidateQueries({ queryKey: ['portal-domain-dns', domainId] });
+    return res;
+  };
 
   return (
     <Stack gap="md">
       <Title order={4}>DNS Records</Title>
       <Text size="sm" c="dimmed">
-        The actual records ({domainName}'s website, email, and other services) — view only. Contact us
-        to request a change.
+        The actual records — {domainName}'s website, email, and other services.
       </Text>
 
       {isLoading ? (
@@ -579,35 +621,69 @@ function DnsZoneSection({ domainId, domainName }: { domainId: string; domainName
       ) : isError ? (
         <Alert color="orange" variant="light">Could not reach the server — please try again shortly.</Alert>
       ) : !hostedWithUs ? (
-        <Alert color="blue" variant="light">
-          This domain isn't hosted with us, so we can't show its DNS records here — please check with
-          wherever it's hosted.
-        </Alert>
-      ) : records.length === 0 ? (
-        <Alert color="blue" variant="light">No DNS records found.</Alert>
+        canCreate ? (
+          isPortalAdmin ? (
+            <Stack gap="sm" maw={420}>
+              <Alert color="blue" variant="light">
+                This domain isn't hosted with us yet, but you can set up your own DNS records (for a server
+                with its own IP address, mail routing, etc.) on our server instead. For that to work, this
+                domain needs to be <b>hosted with us</b> first: its nameservers must be set to{' '}
+                {createNameservers.map((ns, i) => (
+                  <span key={ns}><Code>{ns}</Code>{i < createNameservers.length - 1 ? ', ' : ''}</span>
+                ))} (Nameservers tab) — only then will any record you create below actually take effect.
+                Create the zone first, then change the nameservers if you haven't already.
+              </Alert>
+              <TextInput
+                label="IPv4 Address" placeholder="203.0.113.5" required
+                value={ip} onChange={(e) => setIp(e.currentTarget.value)}
+                description="The IP to point your website at."
+              />
+              <Checkbox
+                label="Also point this domain and www at this IP"
+                checked={pointToServer} onChange={(e) => setPointToServer(e.currentTarget.checked)}
+              />
+              <Group justify="flex-end">
+                <Button size="xs" disabled={!ip.trim()} loading={createMutation.isPending}
+                  onClick={() => createMutation.mutate()}>
+                  Create DNS Zone
+                </Button>
+              </Group>
+            </Stack>
+          ) : (
+            <Alert color="blue" variant="light">
+              This domain isn't hosted with us yet — ask a portal administrator to set up DNS for it, or
+              contact us.
+            </Alert>
+          )
+        ) : (
+          <Alert color="blue" variant="light">
+            This domain isn't hosted with us, so we can't show its DNS records here — please check with
+            wherever it's hosted, or contact us.
+          </Alert>
+        )
       ) : (
-        <Table.ScrollContainer minWidth={600}>
-          <Table striped highlightOnHover verticalSpacing="xs" fz="sm">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>TTL</Table.Th>
-                <Table.Th>Value</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {records.map((r, i) => (
-                <Table.Tr key={i}>
-                  <Table.Td><Badge size="sm" variant="light" color={dnsTypeColors[r.type] ?? 'dark'}>{r.type}</Badge></Table.Td>
-                  <Table.Td>{r.name}</Table.Td>
-                  <Table.Td c="dimmed">{r.ttl}</Table.Td>
-                  <Table.Td style={{ wordBreak: 'break-all' }}>{r.data.join('  ·  ')}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+        <Stack gap="sm">
+          {!!liveNameservers.length && (
+            <Alert color="orange" variant="light" py={6}>
+              <Text size="xs">
+                These records only take effect while {domainName}'s nameservers are{' '}
+                {liveNameservers.map((ns, i) => (
+                  <span key={ns}><Code>{ns}</Code>{i < liveNameservers.length - 1 ? ', ' : ''}</span>
+                ))}. If they're set to anything else, this zone is a silent no-op.
+              </Text>
+            </Alert>
+          )}
+          <WhmDnsSection
+            domain={domainName}
+            records={records}
+            isLoading={isLoading}
+            isError={isError}
+            canAdd={isPortalAdmin}
+            onAddRecord={handleAdd}
+            onEditRecord={handleEdit}
+            onRemoveRecord={handleRemove}
+          />
+        </Stack>
       )}
     </Stack>
   );

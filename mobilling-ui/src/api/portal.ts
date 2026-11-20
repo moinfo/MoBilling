@@ -448,14 +448,43 @@ export const portalGetEppCode = (id: string) =>
 export const getPortalDomainNameservers = (id: string) =>
   api.get<{ data: { nameservers: string[]; editable: boolean; provider?: 'managed' } }>(`/portal/domains/${id}/nameservers`);
 
-export interface PortalDnsRecord {
+/** A record in the WHM-hosted DNS zone (hosting account or standalone whm_dns). Distinct from the richer PortalDnsRecord below, which is the Name.com/Linode Domain Manager's own record shape. */
+export interface PortalWhmDnsRecord {
   type: string;
   name: string;
   ttl: number;
   data: string[];
 }
 export const getPortalDomainDnsZone = (id: string) =>
-  api.get<{ data: PortalDnsRecord[]; hosted_with_us: boolean }>(`/portal/domains/${id}/dns-zone`);
+  api.get<{
+    data: PortalWhmDnsRecord[]; hosted_with_us: boolean; can_create: boolean;
+    create_nameservers?: string[]; nameservers?: string[];
+  }>(`/portal/domains/${id}/dns-zone`);
+
+export const createPortalDomainDnsZone = (id: string, data: { ip: string; point_to_server?: boolean }) =>
+  api.post<{ message: string; data: { www_record_added: boolean } }>(`/portal/domains/${id}/dns-zone`, data);
+
+export interface PortalAddDnsRecordPayload {
+  type: 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX';
+  name: string;
+  ttl: number;
+  value?: string;
+  priority?: number;
+}
+export const addPortalDomainDnsRecord = (id: string, data: PortalAddDnsRecordPayload) =>
+  api.post<{ message: string }>(`/portal/domains/${id}/dns-zone/records`, data);
+
+export interface PortalEditDnsRecordPayload {
+  old: PortalWhmDnsRecord;
+  ttl: number;
+  value?: string;
+  priority?: number;
+}
+export const editPortalDomainDnsRecord = (id: string, data: PortalEditDnsRecordPayload) =>
+  api.put<{ message: string }>(`/portal/domains/${id}/dns-zone/records`, data);
+
+export const removePortalDomainDnsRecord = (id: string, old: PortalWhmDnsRecord) =>
+  api.delete<{ message: string }>(`/portal/domains/${id}/dns-zone/records`, { data: { old } });
 
 export const updatePortalDomainNameservers = (id: string, nameservers: string[]) =>
   api.put<{ data: { nameservers: string[] }; message: string }>(`/portal/domains/${id}/nameservers`, { nameservers });
