@@ -335,6 +335,7 @@ export const provisionSubscription = (subscriptionId: string) =>
   api.post(`/client-subscriptions/${subscriptionId}/provision`);
 export const suspendHosting = (id: string) => api.post(`/hosting-accounts/${id}/suspend`);
 export const unsuspendHosting = (id: string) => api.post(`/hosting-accounts/${id}/unsuspend`);
+export const retryHosting = (id: string) => api.post(`/hosting-accounts/${id}/retry`);
 export const terminateHosting = (id: string) => api.post(`/hosting-accounts/${id}/terminate`);
 export const changeHostingPackage = (id: string, pkg: string) =>
   api.post(`/hosting-accounts/${id}/change-package`, { package: pkg });

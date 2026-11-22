@@ -7,10 +7,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconExternalLink, IconPlayerPause, IconPlayerPlay,
-  IconTrash, IconPackage, IconHistory, IconWorld, IconReceipt2, IconAlertTriangle,
+  IconTrash, IconPackage, IconHistory, IconWorld, IconReceipt2, IconAlertTriangle, IconRefresh,
 } from '@tabler/icons-react';
 import {
-  getHostingAccounts, getHostingLogs, suspendHosting, unsuspendHosting,
+  getHostingAccounts, getHostingLogs, suspendHosting, unsuspendHosting, retryHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
   getHostingInvoicePreview, generateHostingInvoice,
   HostingAccount, ProvisioningLog, HOSTING_STATUS_COLORS,
@@ -347,6 +347,15 @@ export default function HostingAccounts() {
                             <ActionIcon variant="light" color="grape"
                               onClick={() => { setPkgFor(a); setPkgName(a.package ?? ''); }}>
                               <IconPackage size={15} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {can('hosting.create') && a.status === 'failed' && (
+                          <Tooltip label="Retry — create the cPanel account again">
+                            <ActionIcon variant="light" color="blue"
+                              loading={actionMutation.isPending && actionMutation.variables?.id === a.id}
+                              onClick={() => actionMutation.mutate({ fn: retryHosting, id: a.id })}>
+                              <IconRefresh size={15} />
                             </ActionIcon>
                           </Tooltip>
                         )}

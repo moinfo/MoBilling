@@ -6,6 +6,7 @@ use App\Exceptions\WhmApiException;
 use App\Jobs\Hosting\ChangeHostingPackage;
 use App\Jobs\Hosting\ProvisionHostingAccount;
 use App\Jobs\Hosting\ReactivateHostingAccount;
+use App\Jobs\Hosting\RetryHostingAccountProvisioning;
 use App\Jobs\Hosting\SuspendHostingAccount;
 use App\Jobs\Hosting\TerminateHostingAccount;
 use App\Models\Client;
@@ -1147,6 +1148,26 @@ class HostingAccountController extends Controller
         ProvisionHostingAccount::dispatch($clientSubscription);
 
         return response()->json(['message' => 'Provisioning started.'], 202);
+    }
+
+    /**
+     * Retries a hosting account stuck in `failed` — see
+     * RetryHostingAccountProvisioning's doc comment for why this is a
+     * separate action from provision() above (that one refuses outright
+     * once any hosting_accounts row exists, failed or not).
+     */
+    public function retry(HostingAccount $hostingAccount)
+    {
+        abort_unless($hostingAccount->status === 'failed', 422, 'Only a failed hosting account can be retried.');
+
+        RetryHostingAccountProvisioning::dispatch($hostingAccount);
+        $hostingAccount->refresh();
+
+        if ($hostingAccount->status === 'active') {
+            return response()->json(['message' => "Hosting account created for {$hostingAccount->domain}.", 'data' => $hostingAccount]);
+        }
+
+        return response()->json(['message' => 'Still failed — check the server/provisioning log for details and try again.'], 422);
     }
 
     /** Price preview for a manual "generate invoice" action — computes, doesn't create anything. */
