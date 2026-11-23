@@ -208,7 +208,7 @@ export default function Register() {
           </ActionIcon>
         </Group>
 
-        <Box w="100%" maw={440}>
+        <Box w="100%" maw={640}>
           <Group justify="center" gap={8} mb="md" hiddenFrom="md">
             <Image src="/moinfotech-logo.png" h={36} w="auto" alt="MoBilling" />
             <Text size="xl" fw={800}>MoBilling</Text>
@@ -219,14 +219,14 @@ export default function Register() {
             Set up your business in under 2 minutes
           </Text>
 
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm" mb="md">
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm" mb="md">
             {productTiers.map((tier) => {
               const selected = form.values.product_tier === tier.value;
               return (
                 <UnstyledButton key={tier.value} onClick={() => form.setFieldValue('product_tier', tier.value)}>
                   <Paper
                     withBorder
-                    p="sm"
+                    p="md"
                     radius="md"
                     style={{
                       borderColor: selected ? `var(--mantine-color-${tier.color}-filled)` : undefined,
@@ -235,14 +235,14 @@ export default function Register() {
                       height: '100%',
                     }}
                   >
-                    <Group justify="space-between" wrap="nowrap" mb={4}>
+                    <Group gap={10} wrap="nowrap" mb={6}>
                       <ThemeIcon variant="light" color={tier.color} size="md" radius="md">
                         <tier.icon size={16} />
                       </ThemeIcon>
+                      <Text size="sm" fw={700} style={{ flex: 1 }}>{tier.title}</Text>
                       {selected && <IconCheck size={16} color={`var(--mantine-color-${tier.color}-filled)`} />}
                     </Group>
-                    <Text size="sm" fw={700}>{tier.title}</Text>
-                    <Text size="xs" c="dimmed">{tier.desc}</Text>
+                    <Text size="xs" c="dimmed" style={{ lineHeight: 1.5 }}>{tier.desc}</Text>
                   </Paper>
                 </UnstyledButton>
               );
@@ -252,12 +252,18 @@ export default function Register() {
           <Paper withBorder shadow="sm" p="xl" radius="md">
             <form onSubmit={form.onSubmit(handleSubmit)}>
               <Stack gap="md">
-                <TextInput label="Company Name" placeholder="Your company" size="md" required {...form.getInputProps('company_name')} />
-                <TextInput label="Your Name" placeholder="John Doe" size="md" required {...form.getInputProps('name')} />
-                <TextInput label="Email" placeholder="you@company.com" size="md" required {...form.getInputProps('email')} />
-                <TextInput label="Phone" placeholder="+255 7xx xxx xxx" size="md" {...form.getInputProps('phone')} />
-                <PasswordInput label="Password" placeholder="Min 8 characters" size="md" required {...form.getInputProps('password')} />
-                <PasswordInput label="Confirm Password" placeholder="Repeat password" size="md" required {...form.getInputProps('password_confirmation')} />
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                  <TextInput label="Company Name" placeholder="Your company" size="md" required {...form.getInputProps('company_name')} />
+                  <TextInput label="Your Name" placeholder="John Doe" size="md" required {...form.getInputProps('name')} />
+                </SimpleGrid>
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                  <TextInput label="Email" placeholder="you@company.com" size="md" required {...form.getInputProps('email')} />
+                  <TextInput label="Phone" placeholder="+255 7xx xxx xxx" size="md" {...form.getInputProps('phone')} />
+                </SimpleGrid>
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                  <PasswordInput label="Password" placeholder="Min 8 characters" size="md" required {...form.getInputProps('password')} />
+                  <PasswordInput label="Confirm Password" placeholder="Repeat password" size="md" required {...form.getInputProps('password_confirmation')} />
+                </SimpleGrid>
                 <Button fullWidth type="submit" size="md" mt="xs">
                   Create Account
                 </Button>
