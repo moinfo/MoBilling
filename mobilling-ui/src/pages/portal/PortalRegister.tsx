@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { IconMail, IconBrandWhatsapp } from '@tabler/icons-react';
 import { safeNext } from '../../utils/safeNext';
 import { requestPortalOtp, verifyAndRegisterPortal } from '../../api/auth';
 import { useBranding } from '../../branding';
@@ -104,6 +105,7 @@ export default function PortalRegister() {
   };
 
   const [step, setStep] = useState<'details' | 'verify' | 'done'>('details');
+  const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
   const [otpValue, setOtpValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [clientName, setClientName] = useState<string | null>(null);
@@ -135,7 +137,11 @@ export default function PortalRegister() {
   const sendOtp = async (silent = false) => {
     setLoading(true);
     try {
-      const res = await requestPortalOtp(form.values.email.trim().toLowerCase());
+      const res = await requestPortalOtp(
+        form.values.email.trim().toLowerCase(),
+        channel,
+        channel === 'whatsapp' ? form.values.phone.trim() : undefined,
+      );
       if (res.data.has_account) {
         notifications.show({
           title: 'You already have an account',
@@ -148,10 +154,14 @@ export default function PortalRegister() {
       setClientName(res.data.client_name ?? null);
       setIsNewClient(res.data.new_client ?? !res.data.client_name);
       setStep('verify');
-      if (!silent) notifications.show({ message: 'Verification code sent to your email.', color: 'green' });
+      if (!silent) notifications.show({ message: res.data.message, color: 'green' });
     } catch (e: any) {
       notifications.show({
-        message: e?.response?.data?.message ?? e?.response?.data?.errors?.email?.[0] ?? 'Could not send the verification code.',
+        message: e?.response?.data?.message
+          ?? e?.response?.data?.errors?.email?.[0]
+          ?? e?.response?.data?.errors?.phone?.[0]
+          ?? e?.response?.data?.errors?.channel?.[0]
+          ?? 'Could not send the verification code.',
         color: 'red',
       });
     } finally {
@@ -159,11 +169,17 @@ export default function PortalRegister() {
     }
   };
 
-  const handleDetails = form.onSubmit(() => sendOtp());
+  const handleDetails = form.onSubmit(() => {
+    if (channel === 'whatsapp' && !form.values.phone.trim()) {
+      form.setFieldError('phone', 'A phone number is required to receive the code via WhatsApp');
+      return;
+    }
+    sendOtp();
+  });
 
   const handleVerify = async () => {
     if (otpValue.length !== 6) {
-      notifications.show({ message: 'Enter the 6-digit code from your email.', color: 'red' });
+      notifications.show({ message: `Enter the 6-digit code from your ${channel === 'whatsapp' ? 'WhatsApp message' : 'email'}.`, color: 'red' });
       return;
     }
     if (!form.values.name.trim() || form.values.password.length < 8
@@ -282,16 +298,29 @@ export default function PortalRegister() {
                   <input className={s.input} placeholder="Business or organisation" {...form.getInputProps('company', { withError: false })} />
                 </div>
               </div>
-              <div className={s.grid2}>
-                <div className={s.field}>
-                  <label className={s.label}>Email address</label>
-                  <input className={s.input} required type="email" {...form.getInputProps('email', { withError: false })} />
-                  {err('email') && <span className={s.error}>{err('email')}</span>}
+              <div className={s.field}>
+                <label className={s.label}>Email address</label>
+                <input className={s.input} required type="email" {...form.getInputProps('email', { withError: false })} />
+                {err('email') && <span className={s.error}>{err('email')}</span>}
+              </div>
+              <div className={s.field}>
+                <label className={s.label}>Get your verification code via</label>
+                <div className={s.channelToggle}>
+                  <button type="button" className={`${s.channelBtn} ${channel === 'email' ? s.channelBtnActive : ''}`} onClick={() => setChannel('email')}>
+                    <IconMail size={16} /> Email
+                  </button>
+                  <button type="button" className={`${s.channelBtn} ${channel === 'whatsapp' ? s.channelBtnActive : ''}`} onClick={() => setChannel('whatsapp')}>
+                    <IconBrandWhatsapp size={16} /> WhatsApp
+                  </button>
                 </div>
-                <div className={s.field}>
-                  <label className={s.label}>Phone <span className={s.labelOptional}>(optional)</span></label>
-                  <input className={s.input} placeholder="0712 345 678" {...form.getInputProps('phone', { withError: false })} />
-                </div>
+              </div>
+              <div className={s.field}>
+                <label className={s.label}>
+                  Phone {channel === 'email' && <span className={s.labelOptional}>(optional)</span>}
+                </label>
+                <input className={s.input} placeholder="0712 345 678" required={channel === 'whatsapp'}
+                  {...form.getInputProps('phone', { withError: false })} />
+                {err('phone') && <span className={s.error}>{err('phone')}</span>}
               </div>
               <div className={s.field}>
                 <label className={s.label}>Address <span className={s.labelOptional}>(optional)</span></label>
@@ -311,7 +340,7 @@ export default function PortalRegister() {
               </div>
 
               <button className={s.submit} type="submit" disabled={loading}>
-                {loading ? 'Sending…' : 'Continue — verify email'}
+                {loading ? 'Sending…' : channel === 'whatsapp' ? 'Continue — verify WhatsApp' : 'Continue — verify email'}
               </button>
             </form>
 
@@ -321,8 +350,12 @@ export default function PortalRegister() {
           </>
         ) : (
           <>
-            <h1 className={s.title}>Verify your email</h1>
-            <p className={s.subtitle}>Enter the 6-digit code we sent to <b>{form.values.email}</b></p>
+            <h1 className={s.title}>{channel === 'whatsapp' ? 'Verify your WhatsApp' : 'Verify your email'}</h1>
+            <p className={s.subtitle}>
+              {channel === 'whatsapp'
+                ? <>Enter the 6-digit code we sent to <b>{form.values.phone}</b> on WhatsApp</>
+                : <>Enter the 6-digit code we sent to <b>{form.values.email}</b></>}
+            </p>
 
             <div className={s.card}>
               {!isNewClient && (

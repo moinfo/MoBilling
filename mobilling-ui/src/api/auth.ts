@@ -129,8 +129,8 @@ export interface OtpResponse {
   client_name?: string | null;
 }
 
-export const requestPortalOtp = (email: string) =>
-  api.post<OtpResponse>('/portal/request-otp', { email });
+export const requestPortalOtp = (email: string, channel?: 'email' | 'whatsapp', phone?: string) =>
+  api.post<OtpResponse>('/portal/request-otp', { email, channel, phone });
 
 export const verifyAndRegisterPortal = (data: {
   email: string;

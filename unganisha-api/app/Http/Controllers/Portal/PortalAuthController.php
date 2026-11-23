@@ -17,14 +17,20 @@ class PortalAuthController extends Controller
 {
     /**
      * Step 1: Client enters email → we check if it matches a client, send OTP.
+     * Email is the default channel; the client can ask for WhatsApp instead,
+     * which needs a phone — the client's own on file, or one typed in here
+     * for a brand-new signup.
      */
     public function requestOtp(Request $request)
     {
         $request->validate([
             'email' => 'required|email',
+            'channel' => 'nullable|in:email,whatsapp',
+            'phone' => 'nullable|string|max:20',
         ]);
 
         $email = $request->email;
+        $channel = $request->channel;
 
         // Check if already has a portal account
         $existingUser = ClientUser::where('email', $email)->first();
@@ -59,7 +65,23 @@ class PortalAuthController extends Controller
             ]);
         }
 
-        // Rate limit: max 3 OTPs per email per hour
+        $tenant = $client?->tenant ?? \App\Models\Tenant::find($signupTenantId);
+        $phone = $client?->phone ?: $request->phone;
+
+        if ($channel === 'whatsapp') {
+            if (!$phone) {
+                throw ValidationException::withMessages([
+                    'phone' => ['Enter a phone number to receive the code via WhatsApp.'],
+                ]);
+            }
+            if (!app(\App\Services\WhatsAppService::class)->canSend($tenant)) {
+                throw ValidationException::withMessages([
+                    'channel' => ["WhatsApp verification isn't available here — please use email instead."],
+                ]);
+            }
+        }
+
+        // Rate limit: max 10 OTPs per email per hour
         $recentCount = DB::table('portal_otps')
             ->where('email', $email)
             ->where('created_at', '>=', now()->subHour())
@@ -85,41 +107,86 @@ class PortalAuthController extends Controller
             'updated_at' => now(),
         ]);
 
-        // Send OTP via email
-        $tenant = $client?->tenant ?? \App\Models\Tenant::find($signupTenantId);
         $tenantName = $tenant?->name ?? 'MoBilling';
-        // A tenant's own SMTP is theirs to get right; a mistake in it (bad
-        // host/port/credentials) must not block the client from registering.
-        try {
-            Notification::route('mail', $email)
-                ->notify(new PortalOtpNotification($otp, $tenantName, $tenant));
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        $waSent = false;
+        $logTenantId = $client?->tenant_id ?? $signupTenantId;
 
-        // Also send via SMS if phone available and tenant has SMS enabled
-        if ($client?->phone && app(SmsService::class)->canSend($tenant)) {
-            $smsMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
+        if ($channel === 'whatsapp') {
+            // Routes through the tenant's own Meta number or their linked
+            // MoSMS account (WhatsAppService dual-mode) — same approach as
+            // PasswordResetController::forgotPassword().
+            $waMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
+            $wa = app(\App\Services\WhatsAppService::class);
             try {
-                app(SmsService::class)->send($tenant, $client->phone, $smsMessage);
+                // Official Meta AUTHENTICATION template (copy-code button).
+                $wa->sendTemplate($tenant, $phone, config('whatsapp.otp_template', 'otp_code'), [$otp], config('whatsapp.otp_language', 'en'));
+                $waSent = true;
                 CommunicationLog::withoutGlobalScopes()->create([
-                    'tenant_id' => $client->tenant_id, 'client_id' => $client->id, 'channel' => 'sms',
-                    'type' => 'portal_register_otp', 'recipient' => $client->phone, 'message' => $smsMessage, 'status' => 'sent',
+                    'tenant_id' => $logTenantId, 'client_id' => $client?->id, 'channel' => 'whatsapp',
+                    'type' => 'portal_register_otp', 'recipient' => $phone, 'message' => $waMessage, 'status' => 'sent',
                 ]);
             } catch (\Throwable $e) {
-                // SMS failed — email was still sent
-                CommunicationLog::withoutGlobalScopes()->create([
-                    'tenant_id' => $client->tenant_id, 'client_id' => $client->id, 'channel' => 'sms',
-                    'type' => 'portal_register_otp', 'recipient' => $client->phone, 'message' => $smsMessage,
-                    'status' => 'failed', 'error' => $e->getMessage(),
-                ]);
+                try {
+                    // Template unavailable — plain text fallback.
+                    $wa->sendText($tenant, $phone, $waMessage);
+                    $waSent = true;
+                    CommunicationLog::withoutGlobalScopes()->create([
+                        'tenant_id' => $logTenantId, 'client_id' => $client?->id, 'channel' => 'whatsapp',
+                        'type' => 'portal_register_otp', 'recipient' => $phone, 'message' => $waMessage, 'status' => 'sent',
+                    ]);
+                } catch (\Throwable $e2) {
+                    CommunicationLog::withoutGlobalScopes()->create([
+                        'tenant_id' => $logTenantId, 'client_id' => $client?->id, 'channel' => 'whatsapp',
+                        'type' => 'portal_register_otp', 'recipient' => $phone, 'message' => $waMessage,
+                        'status' => 'failed', 'error' => $e2->getMessage(),
+                    ]);
+                }
+            }
+
+            // WhatsApp failed outright — fall back to email so they're not stuck.
+            if (!$waSent) {
+                try {
+                    Notification::route('mail', $email)
+                        ->notify(new PortalOtpNotification($otp, $tenantName, $tenant));
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+        } else {
+            // Default channel: email.
+            // A tenant's own SMTP is theirs to get right; a mistake in it (bad
+            // host/port/credentials) must not block the client from registering.
+            try {
+                Notification::route('mail', $email)
+                    ->notify(new PortalOtpNotification($otp, $tenantName, $tenant));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            // Also send via SMS if phone available and tenant has SMS enabled
+            if ($client?->phone && app(SmsService::class)->canSend($tenant)) {
+                $smsMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
+                try {
+                    app(SmsService::class)->send($tenant, $client->phone, $smsMessage);
+                    CommunicationLog::withoutGlobalScopes()->create([
+                        'tenant_id' => $client->tenant_id, 'client_id' => $client->id, 'channel' => 'sms',
+                        'type' => 'portal_register_otp', 'recipient' => $client->phone, 'message' => $smsMessage, 'status' => 'sent',
+                    ]);
+                } catch (\Throwable $e) {
+                    // SMS failed — email was still sent
+                    CommunicationLog::withoutGlobalScopes()->create([
+                        'tenant_id' => $client->tenant_id, 'client_id' => $client->id, 'channel' => 'sms',
+                        'type' => 'portal_register_otp', 'recipient' => $client->phone, 'message' => $smsMessage,
+                        'status' => 'failed', 'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
         return response()->json([
             'has_account' => false,
             'new_client'  => !$client,
-            'message' => 'Verification code sent to your email.',
+            'message' => $waSent ? 'Verification code sent to your WhatsApp.' : 'Verification code sent to your email.',
             'client_name' => $client?->name,
         ]);
     }

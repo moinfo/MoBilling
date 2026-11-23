@@ -23,6 +23,18 @@ class WhatsAppService
         $this->timeout = config('whatsapp.timeout', 30);
     }
 
+    /** Tenant can deliver WhatsApp: own Meta number, or a linked MoSMS account. */
+    public function canSend(?Tenant $tenant): bool
+    {
+        if (!$tenant || !$tenant->whatsapp_enabled) {
+            return false;
+        }
+        if ($tenant->whatsapp_phone_number_id && $tenant->whatsapp_access_token) {
+            return true;
+        }
+        return app(MosmsService::class)->isLinked($tenant);
+    }
+
     /**
      * Send a plain text message via WhatsApp Business API.
      * Best for session-based (within 24h) replies.
