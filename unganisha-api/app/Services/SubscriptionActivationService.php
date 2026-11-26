@@ -47,6 +47,18 @@ class SubscriptionActivationService
             if ($sub->status === 'suspended') {
                 $restored[] = $sub->label ?: ($sub->productService?->name ?? 'service');
             }
+
+            // First-ever activation (still 'pending'): start_date/expire_date
+            // were already set to this exact period at order/creation time
+            // (start + one billing_cycle) — just turn the subscription on.
+            // Advancing here too would double-credit the client a free extra
+            // cycle on day one. Only a RENEWAL (already active/suspended from
+            // an earlier cycle) should push expire_date forward another step.
+            if ($sub->status === 'pending') {
+                $sub->update(['status' => 'active']);
+                continue;
+            }
+
             $baseDate = $sub->expire_date ?? $sub->start_date;
             $cycle = $sub->productService?->billing_cycle;
 
