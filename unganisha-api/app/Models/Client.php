@@ -18,7 +18,7 @@ class Client extends Model
         'address', 'tax_id', 'status', 'notes', 'legacy_id', 'credit_balance',
         'first_name', 'last_name', 'company_name',
         'address_1', 'address_2', 'city', 'state', 'postcode', 'country',
-        'whatsapp_opt_out_at',
+        'whatsapp_opt_out_at', 'registry_contact_id',
     ];
 
     protected $casts = [

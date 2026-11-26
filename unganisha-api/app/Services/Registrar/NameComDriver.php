@@ -462,7 +462,7 @@ class NameComDriver implements RegistrarDriver
         return [];
     }
 
-    public function register(string $domain, int $years = 1, array $nameservers = []): array
+    public function register(string $domain, int $years = 1, array $nameservers = [], ?string $registrantContactId = null): array
     {
         throw new RegistrarApiException('register', 'Registration through Name.com is not enabled.');
     }

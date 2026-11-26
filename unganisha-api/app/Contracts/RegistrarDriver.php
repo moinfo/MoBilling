@@ -20,8 +20,13 @@ interface RegistrarDriver
     /** @return array{zone: string, credit: string}[] registrar prepaid balances */
     public function credit(): array;
 
-    /** @return array registry response */
-    public function register(string $domain, int $years = 1, array $nameservers = []): array;
+    /**
+     * @param ?string $registrantContactId Registrant contact to use instead
+     *        of the driver's own default (FredHttpDriver::createContact()) —
+     *        ignored by drivers with no such concept (e.g. NameComDriver).
+     * @return array registry response
+     */
+    public function register(string $domain, int $years = 1, array $nameservers = [], ?string $registrantContactId = null): array;
 
     public function renew(string $domain, int $years = 1): array;
 

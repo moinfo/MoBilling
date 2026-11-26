@@ -218,13 +218,30 @@ class FredHttpDriver implements RegistrarDriver
 
     // ── Paid / mutating (payment-gated jobs ONLY) ─────────────────────────────
 
-    public function register(string $domain, int $years = 1, array $nameservers = []): array
+    public function register(string $domain, int $years = 1, array $nameservers = [], ?string $registrantContactId = null): array
     {
         return $this->call('post', '/api/domains/register/', $this->withCreds(array_filter([
-            'domain_name'  => $domain,
-            'period_years' => $years,
-            'nameservers'  => $nameservers ?: null,
+            'domain_name'           => $domain,
+            'period_years'          => $years,
+            'nameservers'           => $nameservers ?: null,
+            'registrant_contact_id' => $registrantContactId,
         ])));
+    }
+
+    /**
+     * Create a registry contact for one of OUR clients and return its handle
+     * — so a domain we register for them carries their own name/email/phone
+     * as registrant instead of the platform's own (CONTACT-MOINFOTECH),
+     * which is what every domain got before this existed (2026-11-26 .tz
+     * registry compliance notice). Pass the result straight into register().
+     *
+     * @param array{name: string, email: string, city?: ?string, country_code?: ?string, street?: ?string[], org?: ?string, postal_code?: ?string, phone?: ?string} $contact
+     */
+    public function createContact(array $contact): string
+    {
+        $res = $this->call('post', '/api/contacts/create/', array_filter($contact, fn ($v) => $v !== null && $v !== ''));
+
+        return $res['contact_id'];
     }
 
     public function renew(string $domain, int $years = 1): array
