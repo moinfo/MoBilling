@@ -652,6 +652,100 @@ class PortalDomainController extends Controller
     }
 
     /**
+     * True when this domain's registry contact is one WE created for this
+     * exact client (ClientRegistryContact::resolve(), 2026-11-26 .tz
+     * compliance fix) — only then do we hold its full details and a safe,
+     * audited way to change it. A pre-existing/imported handle we didn't
+     * create (e.g. a WHMCS-era CONTACT-W163) stays contact-support-only;
+     * we'd otherwise be guessing at fields we never actually set.
+     */
+    private function selfManagedContactId(Domain $domain): ?string
+    {
+        $client = $domain->client()->withoutGlobalScopes()->first();
+        if (!$client?->registry_contact_id || $client->registry_contact_id !== $domain->registrant_handle) {
+            return null;
+        }
+
+        return $client->registry_contact_id;
+    }
+
+    /** Current WHOIS contact details, read live from the registry — null means "not self-manageable here, see the contact-support link". */
+    public function whoisContact(Request $request, Domain $domain)
+    {
+        abort_unless($domain->client_id === $request->user()->client_id, 404);
+
+        $contactId = $this->selfManagedContactId($domain);
+        if (!$contactId) {
+            return response()->json(['data' => null]);
+        }
+
+        try {
+            $info = app(DomainRegistrarManager::class)->driverFor($domain->tenant_id, $domain->id)->contactInfo($contactId);
+        } catch (\Throwable) {
+            return response()->json(['data' => null]);
+        }
+
+        return response()->json(['data' => [
+            'name'         => $info['name'] ?? null,
+            'org'          => $info['org'] ?? null,
+            'email'        => $info['email'] ?? null,
+            'phone'        => $info['voice'] ?? null,
+            'city'         => $info['city'] ?? null,
+            'street'       => $info['street'] ?? [],
+            'postal_code'  => $info['postal_code'] ?? null,
+            'country_code' => $info['country_code'] ?? null,
+        ]]);
+    }
+
+    /** Update the registry's own record for this domain's contact — same one shared across all this client's domains. */
+    public function updateWhoisContact(Request $request, Domain $domain)
+    {
+        $user = $request->user();
+        abort_unless($domain->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can update WHOIS contact details.');
+
+        $contactId = $this->selfManagedContactId($domain);
+        abort_unless($contactId, 422, "This domain's WHOIS contact isn't self-manageable here — please contact us to update it.");
+
+        $data = $request->validate([
+            'name'         => 'required|string|max:255',
+            'email'        => 'required|email|max:255',
+            'org'          => 'nullable|string|max:200',
+            'phone'        => 'nullable|string|max:20',
+            'city'         => 'nullable|string|max:100',
+            'street'       => 'nullable|array|max:3',
+            'street.*'     => 'string|max:255',
+            'postal_code'  => 'nullable|string|max:20',
+            'country_code' => 'nullable|string|size:2',
+        ]);
+
+        try {
+            app(DomainRegistrarManager::class)->driverFor($domain->tenant_id, $domain->id)->updateContact($contactId, [
+                'name'         => $data['name'],
+                'email'        => $data['email'],
+                'org'          => $data['org'] ?? null,
+                'phone'        => \App\Services\Registrar\ClientRegistryContact::fredVoice($data['phone'] ?? null),
+                'city'         => $data['city'] ?? null,
+                'street'       => $data['street'] ?? null,
+                'postal_code'  => $data['postal_code'] ?? null,
+                'country_code' => $data['country_code'] ?? null,
+            ]);
+        } catch (RegistrarApiException $e) {
+            return response()->json(['message' => 'The registry rejected that change — please check the details, or contact us.'], 422);
+        }
+
+        \App\Models\DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'whois_contact_updated_portal',
+            'request'   => ['by_portal_user' => $user->id, 'contact_id' => $contactId],
+            'status'    => 'success',
+        ]);
+
+        return response()->json(['message' => 'WHOIS contact details updated.']);
+    }
+
+    /**
      * Turn auto-renew on/off. When ON, the nightly job invoices the renewal
      * and pays it from the client's credit wallet automatically — so it only
      * completes while the wallet holds enough balance.

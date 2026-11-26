@@ -275,6 +275,21 @@ class FredHttpDriver implements RegistrarDriver
         return $this->call('get', "/api/admin/registry/contact/{$contactId}/");
     }
 
+    /**
+     * Update a contact's details at the registry — a staff/service account
+     * may update any contact it created via createContact() (see
+     * contacts/views.py's is_staff carve-out), not just one of its own.
+     *
+     * @param array{name?: ?string, email?: ?string, city?: ?string, country_code?: ?string, street?: ?string[], org?: ?string, postal_code?: ?string, phone?: ?string} $fields
+     */
+    public function updateContact(string $contactId, array $fields): array
+    {
+        return $this->call('patch', '/api/contacts/update/', array_merge(
+            ['contact_id' => $contactId],
+            array_filter($fields, fn ($v) => $v !== null && $v !== '')
+        ));
+    }
+
     public function updateDomain(string $domain, array $changes): array
     {
         return $this->call('put', "/api/domains/{$domain}/update/", $changes);

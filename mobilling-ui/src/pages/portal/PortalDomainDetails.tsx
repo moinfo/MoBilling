@@ -20,6 +20,7 @@ import {
   getPortalDomainDetail, portalRenewDomain, portalSetAutoRenew, portalGetEppCode, getPortalTransfer, portalLockDomain, portalUnlockDomain, portalTransferCode,
   getPortalDomainNameservers, updatePortalDomainNameservers, getPortalDomainDnsZone, PortalDomainDetail,
   createPortalDomainDnsZone, addPortalDomainDnsRecord, editPortalDomainDnsRecord, removePortalDomainDnsRecord,
+  getPortalDomainWhoisContact, updatePortalDomainWhoisContact, PortalWhoisContact,
 } from '../../api/portal';
 import WhmDnsSection from '../../components/Hosting/WhmDnsSection';
 import { useAuth } from '../../context/AuthContext';
@@ -371,29 +372,8 @@ export default function PortalDomainDetails() {
             )}
 
             {section === 'contacts' && (
-              <Stack gap="md">
-                <Title order={4}>Contact Information</Title>
-                <Grid>
-                  <Grid.Col span={{ base: 12, sm: 6 }}>
-                    <Field label="Registrant Contact (registry handle):">
-                      {d.registry.registrant_handle ? <Code>{d.registry.registrant_handle}</Code> : '—'}
-                    </Field>
-                  </Grid.Col>
-                  <Grid.Col span={{ base: 12, sm: 6 }}>
-                    <Field label="Admin Contact (registry handle):">
-                      {d.registry.admin_handle ? <Code>{d.registry.admin_handle}</Code> : '—'}
-                    </Field>
-                  </Grid.Col>
-                </Grid>
-                <Alert color="blue" variant="light">
-                  WHOIS contact details are held at the .tz registry. To update the registrant or admin
-                  information, open a support ticket and we will submit the change to the registry.
-                </Alert>
-                <Button variant="light" w="fit-content"
-                  onClick={() => navigate(`/portal/tickets/new?service=${encodeURIComponent(`Domain: ${d.name}`)}&subject=${encodeURIComponent(`Update WHOIS contact information for ${d.name}`)}`)}>
-                  Open a Support Ticket
-                </Button>
-              </Stack>
+              <WhoisContactSection domainId={d.id} domainName={d.name} isPortalAdmin={isPortalAdmin}
+                registrantHandle={d.registry.registrant_handle} adminHandle={d.registry.admin_handle} />
             )}
 
             {section === 'epp' && d.transfer_managed && (
@@ -547,6 +527,133 @@ function NameserversSection({ domainId, isPortalAdmin }: { domainId: string; isP
             <Button size="xs" color="green" disabled={!canSave} loading={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}>
               Save Nameservers
+            </Button>
+          </Group>
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
+/**
+ * Contact Information tab. The registry handles are always shown; below
+ * them, either the live WHOIS details with an admin-only edit form (when
+ * this domain's registrant is a contact WE created for this client —
+ * 2026-11-26 .tz compliance fix) or the pre-existing "open a ticket"
+ * fallback (a pre-existing/imported handle we don't fully control the
+ * fields of, e.g. a WHMCS-era CONTACT-W163).
+ */
+function WhoisContactSection({ domainId, domainName, isPortalAdmin, registrantHandle, adminHandle }: {
+  domainId: string; domainName: string; isPortalAdmin: boolean;
+  registrantHandle: string | null; adminHandle: string | null;
+}) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<PortalWhoisContact>({
+    name: '', org: '', email: '', phone: '', city: '', street: [], postal_code: '', country_code: '',
+  });
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['portal-domain-whois', domainId],
+    queryFn: () => getPortalDomainWhoisContact(domainId),
+  });
+  const contact = data?.data?.data ?? null;
+
+  const startEdit = () => {
+    if (contact) setForm({ ...contact, street: contact.street ?? [] });
+    setEditing(true);
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: () => updatePortalDomainWhoisContact(domainId, form),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-domain-whois', domainId] });
+      notifications.show({ title: 'WHOIS updated', message: res.data.message, color: 'green' });
+      setEditing(false);
+    },
+    onError: (e: any) => notifications.show({
+      title: 'Update failed',
+      message: e?.response?.data?.message
+        || Object.values(e?.response?.data?.errors ?? {}).flat().join(' ')
+        || 'Please check the details and try again.',
+      color: 'red',
+    }),
+  });
+
+  const ticketButton = (
+    <Button variant="light" w="fit-content"
+      onClick={() => navigate(`/portal/tickets/new?service=${encodeURIComponent(`Domain: ${domainName}`)}&subject=${encodeURIComponent(`Update WHOIS contact information for ${domainName}`)}`)}>
+      Open a Support Ticket
+    </Button>
+  );
+
+  return (
+    <Stack gap="md">
+      <Title order={4}>Contact Information</Title>
+      <Grid>
+        <Grid.Col span={{ base: 12, sm: 6 }}>
+          <Field label="Registrant Contact (registry handle):">
+            {registrantHandle ? <Code>{registrantHandle}</Code> : '—'}
+          </Field>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6 }}>
+          <Field label="Admin Contact (registry handle):">
+            {adminHandle ? <Code>{adminHandle}</Code> : '—'}
+          </Field>
+        </Grid.Col>
+      </Grid>
+
+      {isLoading ? (
+        <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">Fetching live from the registry…</Text></Group>
+      ) : isError || !contact ? (
+        <>
+          <Alert color="blue" variant="light">
+            WHOIS contact details are held at the .tz registry. To update the registrant or admin
+            information, open a support ticket and we will submit the change to the registry.
+          </Alert>
+          {ticketButton}
+        </>
+      ) : !editing ? (
+        <>
+          <Grid>
+            <Grid.Col span={{ base: 12, sm: 6 }}><Field label="Name:">{contact.name || '—'}</Field></Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}><Field label="Email:">{contact.email || '—'}</Field></Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}><Field label="Phone:">{contact.phone || '—'}</Field></Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}><Field label="Company:">{contact.org || '—'}</Field></Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}><Field label="City:">{contact.city || '—'}</Field></Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}><Field label="Country:">{contact.country_code || '—'}</Field></Grid.Col>
+          </Grid>
+          <Text size="sm" c="dimmed">
+            This is what the .tz registry shows for your domain's registrant and admin contact — the same
+            contact is used across all your domains. Keep it accurate: it's how the registry identifies you
+            as the owner and reaches you about renewals.
+          </Text>
+          {isPortalAdmin ? (
+            <Button size="xs" variant="light" w="fit-content" onClick={startEdit}>Update WHOIS Contact</Button>
+          ) : (
+            <Text size="xs" c="dimmed">Only portal administrators can update WHOIS contact details.</Text>
+          )}
+        </>
+      ) : (
+        <Stack gap="xs" maw={460}>
+          <TextInput size="sm" label="Full name" required value={form.name ?? ''}
+            onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} />
+          <TextInput size="sm" label="Email" required type="email" value={form.email ?? ''}
+            onChange={(e) => setForm({ ...form, email: e.currentTarget.value })} />
+          <TextInput size="sm" label="Company" placeholder="optional" value={form.org ?? ''}
+            onChange={(e) => setForm({ ...form, org: e.currentTarget.value })} />
+          <TextInput size="sm" label="Phone" value={form.phone ?? ''}
+            onChange={(e) => setForm({ ...form, phone: e.currentTarget.value })} />
+          <TextInput size="sm" label="City" value={form.city ?? ''}
+            onChange={(e) => setForm({ ...form, city: e.currentTarget.value })} />
+          <TextInput size="sm" label="Address" placeholder="optional" value={form.street?.[0] ?? ''}
+            onChange={(e) => setForm({ ...form, street: [e.currentTarget.value] })} />
+          <Group justify="flex-end" mt="xs">
+            <Button size="xs" variant="default" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="xs" color="green" disabled={!form.name?.trim() || !form.email?.trim()} loading={saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}>
+              Save
             </Button>
           </Group>
         </Stack>

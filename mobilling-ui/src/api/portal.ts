@@ -492,6 +492,23 @@ export const updatePortalDomainNameservers = (id: string, nameservers: string[])
 export const portalSetAutoRenew = (id: string, enabled: boolean) =>
   api.put<{ data: { auto_renew: boolean }; message: string }>(`/portal/domains/${id}/auto-renew`, { enabled });
 
+/** Live WHOIS contact for a domain — null when it isn't one we created for this client (pre-existing/imported handle), so it isn't self-editable here. */
+export interface PortalWhoisContact {
+  name: string | null;
+  org: string | null;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  street: string[];
+  postal_code: string | null;
+  country_code: string | null;
+}
+export const getPortalDomainWhoisContact = (id: string) =>
+  api.get<{ data: PortalWhoisContact | null }>(`/portal/domains/${id}/whois-contact`);
+
+export const updatePortalDomainWhoisContact = (id: string, data: Omit<PortalWhoisContact, 'street'> & { street?: string[] }) =>
+  api.put<{ message: string }>(`/portal/domains/${id}/whois-contact`, data);
+
 export const portalSuggestDomains: import('./domains').DomainSuggestFn = async (name, opts) => {
   const res = await api.get<{ data: import('./domains').DomainSuggestRow[] }>('/portal/domains/suggest', {
     params: { name, tlds: opts?.tlds?.join(','), check: opts?.check === false ? 0 : undefined },

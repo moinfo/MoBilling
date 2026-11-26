@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Log;
  * the registrant of — shared by RegisterDomainJob (new registrations) and
  * FixSharedRegistrantContacts (backfilling the 123+ domains that shared
  * CONTACT-MOINFOTECH before this existed, 2026-11-26 .tz compliance notice).
+ * fredVoice() is also used directly by PortalDomainController::
+ * updateWhoisContact() when a client edits that same contact later.
  */
 class ClientRegistryContact
 {
@@ -56,7 +58,7 @@ class ClientRegistryContact
      * when the number carries no explicit country code, same assumption the
      * contact's country_code already makes elsewhere in this flow.
      */
-    private static function fredVoice(?string $phone): ?string
+    public static function fredVoice(?string $phone): ?string
     {
         if (!$phone) {
             return null;

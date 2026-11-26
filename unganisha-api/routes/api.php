@@ -1307,6 +1307,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::delete('/domains/{domain}/dns-zone/records', [\App\Http\Controllers\Portal\PortalDomainController::class, 'removeDnsRecord']);
     Route::put('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'updateNameservers']);
     Route::put('/domains/{domain}/auto-renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'setAutoRenew']);
+    Route::get('/domains/{domain}/whois-contact', [\App\Http\Controllers\Portal\PortalDomainController::class, 'whoisContact']);
+    Route::put('/domains/{domain}/whois-contact', [\App\Http\Controllers\Portal\PortalDomainController::class, 'updateWhoisContact']);
     Route::get('/reseller/status', [\App\Http\Controllers\Portal\PortalResellerController::class, 'status']);
     Route::post('/reseller/subscribe', [\App\Http\Controllers\Portal\PortalResellerController::class, 'subscribe']);
     Route::get('/reseller/domains/check', [\App\Http\Controllers\Portal\PortalResellerController::class, 'check']);
