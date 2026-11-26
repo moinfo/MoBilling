@@ -278,6 +278,23 @@ export const updateDomainNameservers = (id: string, nameservers: string[]) =>
 export const setDomainAutoRenew = (id: string, enabled: boolean) =>
   api.put<{ data: { auto_renew: boolean }; message: string }>(`/domains/${id}/auto-renew`, { enabled });
 
+/** Live WHOIS contact for a domain — null when it isn't a contact MoBilling created for this client (pre-existing/imported handle), so it isn't self-editable here. */
+export interface DomainWhoisContact {
+  name: string | null;
+  org: string | null;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  street: string[];
+  postal_code: string | null;
+  country_code: string | null;
+}
+export const getDomainWhoisContact = (id: string) =>
+  api.get<{ data: DomainWhoisContact | null }>(`/domains/${id}/whois-contact`);
+
+export const updateDomainWhoisContact = (id: string, data: Omit<DomainWhoisContact, 'street'> & { street?: string[] }) =>
+  api.put<{ message: string }>(`/domains/${id}/whois-contact`, data);
+
 export const renewDomain = (id: string, years: number) =>
   api.post(`/domains/${id}/renew`, { years });
 

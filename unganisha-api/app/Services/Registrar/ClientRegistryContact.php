@@ -4,6 +4,7 @@ namespace App\Services\Registrar;
 
 use App\Helpers\PhoneHelper;
 use App\Models\Client;
+use App\Models\Domain;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -11,8 +12,8 @@ use Illuminate\Support\Facades\Log;
  * the registrant of — shared by RegisterDomainJob (new registrations) and
  * FixSharedRegistrantContacts (backfilling the 123+ domains that shared
  * CONTACT-MOINFOTECH before this existed, 2026-11-26 .tz compliance notice).
- * fredVoice() is also used directly by PortalDomainController::
- * updateWhoisContact() when a client edits that same contact later.
+ * fredVoice() and selfManagedHandle() are also used directly by
+ * PortalDomainController/DomainController's WHOIS-contact edit screens.
  */
 class ClientRegistryContact
 {
@@ -70,5 +71,23 @@ class ClientRegistryContact
         $cc = PhoneHelper::countryCode($phone) ?? '255';
 
         return "+{$cc}.{$national}";
+    }
+
+    /**
+     * The contact id to edit for this domain's WHOIS, or null when it isn't
+     * safe to: only a contact THIS platform created for THIS exact client
+     * (resolve(), above) is one we hold the full, correct field set for. A
+     * pre-existing/imported handle (e.g. a WHMCS-era CONTACT-W163) might
+     * carry fields we never set and have no record of — editing it here
+     * could silently blank them out, so it stays contact-support-only.
+     */
+    public static function selfManagedHandle(Domain $domain): ?string
+    {
+        $client = $domain->client ?? $domain->client()->withoutGlobalScopes()->first();
+        if (!$client?->registry_contact_id || $client->registry_contact_id !== $domain->registrant_handle) {
+            return null;
+        }
+
+        return $client->registry_contact_id;
     }
 }

@@ -651,30 +651,12 @@ class PortalDomainController extends Controller
         }
     }
 
-    /**
-     * True when this domain's registry contact is one WE created for this
-     * exact client (ClientRegistryContact::resolve(), 2026-11-26 .tz
-     * compliance fix) — only then do we hold its full details and a safe,
-     * audited way to change it. A pre-existing/imported handle we didn't
-     * create (e.g. a WHMCS-era CONTACT-W163) stays contact-support-only;
-     * we'd otherwise be guessing at fields we never actually set.
-     */
-    private function selfManagedContactId(Domain $domain): ?string
-    {
-        $client = $domain->client()->withoutGlobalScopes()->first();
-        if (!$client?->registry_contact_id || $client->registry_contact_id !== $domain->registrant_handle) {
-            return null;
-        }
-
-        return $client->registry_contact_id;
-    }
-
     /** Current WHOIS contact details, read live from the registry — null means "not self-manageable here, see the contact-support link". */
     public function whoisContact(Request $request, Domain $domain)
     {
         abort_unless($domain->client_id === $request->user()->client_id, 404);
 
-        $contactId = $this->selfManagedContactId($domain);
+        $contactId = \App\Services\Registrar\ClientRegistryContact::selfManagedHandle($domain);
         if (!$contactId) {
             return response()->json(['data' => null]);
         }
@@ -704,7 +686,7 @@ class PortalDomainController extends Controller
         abort_unless($domain->client_id === $user->client_id, 404);
         abort_unless($user->role === 'admin', 403, 'Only portal administrators can update WHOIS contact details.');
 
-        $contactId = $this->selfManagedContactId($domain);
+        $contactId = \App\Services\Registrar\ClientRegistryContact::selfManagedHandle($domain);
         abort_unless($contactId, 422, "This domain's WHOIS contact isn't self-manageable here — please contact us to update it.");
 
         $data = $request->validate([

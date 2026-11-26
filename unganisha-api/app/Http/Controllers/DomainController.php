@@ -974,6 +974,81 @@ class DomainController extends Controller
         return strtolower(explode('.', $name, 2)[1] ?? '');
     }
 
+    /**
+     * Current WHOIS contact details, read live from the registry — null
+     * means this domain's registrant isn't one we created for its client
+     * (ClientRegistryContact::resolve(), 2026-11-26 .tz compliance fix), so
+     * there's nothing safe to self-edit here; staff fall back to editing it
+     * directly at the registry some other way if one is ever needed.
+     */
+    public function whoisContact(Domain $domain)
+    {
+        $contactId = \App\Services\Registrar\ClientRegistryContact::selfManagedHandle($domain);
+        if (!$contactId) {
+            return response()->json(['data' => null]);
+        }
+
+        try {
+            $info = $this->registrar->driverFor($domain->tenant_id, $domain->id)->contactInfo($contactId);
+        } catch (\Throwable) {
+            return response()->json(['data' => null]);
+        }
+
+        return response()->json(['data' => [
+            'name'         => $info['name'] ?? null,
+            'org'          => $info['org'] ?? null,
+            'email'        => $info['email'] ?? null,
+            'phone'        => $info['voice'] ?? null,
+            'city'         => $info['city'] ?? null,
+            'street'       => $info['street'] ?? [],
+            'postal_code'  => $info['postal_code'] ?? null,
+            'country_code' => $info['country_code'] ?? null,
+        ]]);
+    }
+
+    public function updateWhoisContact(Request $request, Domain $domain)
+    {
+        $contactId = \App\Services\Registrar\ClientRegistryContact::selfManagedHandle($domain);
+        abort_unless($contactId, 422, "This domain's WHOIS contact isn't self-manageable here — it predates this client's own registry contact.");
+
+        $data = $request->validate([
+            'name'         => 'required|string|max:255',
+            'email'        => 'required|email|max:255',
+            'org'          => 'nullable|string|max:200',
+            'phone'        => 'nullable|string|max:20',
+            'city'         => 'nullable|string|max:100',
+            'street'       => 'nullable|array|max:3',
+            'street.*'     => 'string|max:255',
+            'postal_code'  => 'nullable|string|max:20',
+            'country_code' => 'nullable|string|size:2',
+        ]);
+
+        try {
+            $this->registrar->driverFor($domain->tenant_id, $domain->id)->updateContact($contactId, [
+                'name'         => $data['name'],
+                'email'        => $data['email'],
+                'org'          => $data['org'] ?? null,
+                'phone'        => \App\Services\Registrar\ClientRegistryContact::fredVoice($data['phone'] ?? null),
+                'city'         => $data['city'] ?? null,
+                'street'       => $data['street'] ?? null,
+                'postal_code'  => $data['postal_code'] ?? null,
+                'country_code' => $data['country_code'] ?? null,
+            ]);
+        } catch (RegistrarApiException $e) {
+            return response()->json(['message' => 'The registry rejected that change — please check the details, or contact us.'], 422);
+        }
+
+        DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'whois_contact_updated',
+            'request'   => ['by_user' => auth()->id(), 'contact_id' => $contactId],
+            'status'    => 'success',
+        ]);
+
+        return response()->json(['message' => 'WHOIS contact details updated.']);
+    }
+
     // ── WHM DNS for domains with no hosting account of their own ────────────
     //
     // For a domain that DOES have a hosting_accounts row on one of our WHM
@@ -982,9 +1057,8 @@ class DomainController extends Controller
     // provisioned). This section is only for a domain with no such account
     // — mainly FRED-registered .tz domains — where staff explicitly asks us
     // to create a standalone DNS-only zone on one of our servers and manage
-    // it here. Add-only, same as everywhere else WHM DNS is touched in this
-    // codebase: see WhmService::addDnsRecord()'s doc comment for why
-    // edit/delete are deliberately never exposed.
+    // it here. Add/edit/remove — see WhmService::editDnsRecord()'s doc
+    // comment for the live-rescan safety mechanism edit/remove rely on.
     //
     // Deliberately domain-centric, not a loop over every server: rather than
     // silently probing parse_dns_zone against each of the tenant's servers

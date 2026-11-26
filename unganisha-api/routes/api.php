@@ -864,6 +864,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:domains.renew')->put('/domains/{domain}/auto-renew', [\App\Http\Controllers\DomainController::class, 'setAutoRenew']);
     Route::middleware('permission:domains.read')->get('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'nameservers']);
     Route::middleware('permission:domains.manage_dns')->put('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'updateNameservers']);
+    Route::middleware('permission:domains.read')->get('/domains/{domain}/whois-contact', [\App\Http\Controllers\DomainController::class, 'whoisContact']);
+    Route::middleware('permission:domains.manage_dns')->put('/domains/{domain}/whois-contact', [\App\Http\Controllers\DomainController::class, 'updateWhoisContact']);
     // WHM DNS for a domain with no hosting account of its own (see DomainController's "WHM DNS" section).
     Route::middleware('permission:domains.manage_dns')->group(function () {
         Route::get('/domains/{domain}/dns-zone-status', [\App\Http\Controllers\DomainController::class, 'dnsZoneStatus']);

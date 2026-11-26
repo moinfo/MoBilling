@@ -22,6 +22,7 @@ import {
   getDomainNameservers, getDomainTransfer, lockDomainTransfer, unlockDomainTransfer, getDomainTransferCode, updateDomainNameservers, describeDomainAction, getDomainRegistrarInfo,
   getDomainDnsServers, getDomainDnsZoneStatus, createDomainDnsZone, getDomainDnsZone, addDomainDnsRecord,
   editDomainDnsRecord, removeDomainDnsRecord,
+  getDomainWhoisContact, updateDomainWhoisContact, DomainWhoisContact,
   DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { usePermissions } from '../hooks/usePermissions';
@@ -357,6 +358,11 @@ export default function DomainDetails() {
         )}
         {!isNC && (
           <Grid.Col span={12}>
+            <WhoisContactCard domainId={d.id} />
+          </Grid.Col>
+        )}
+        {!isNC && (
+          <Grid.Col span={12}>
             <WhmDnsCard domainId={d.id} domainName={d.name} canManage={can('domains.manage_dns')} />
           </Grid.Col>
         )}
@@ -506,6 +512,106 @@ function NameserversCard({ domainId, domainStatus }: { domainId: string; domainS
             <Button size="xs" color="green" disabled={!canSave} loading={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}>
               Save to Registry
+            </Button>
+          </Group>
+        </Stack>
+      )}
+    </Paper>
+  );
+}
+
+/**
+ * WHOIS contact at the registry — editable only when it's a contact we
+ * created for this domain's own client (ClientRegistryContact::resolve(),
+ * 2026-11-26 .tz compliance fix: every domain used to share the platform's
+ * own CONTACT-MOINFOTECH as registrant). A pre-existing/imported handle
+ * (e.g. a WHMCS-era CONTACT-W163) falls back to a plain notice — we never
+ * set those fields and shouldn't guess at overwriting them.
+ */
+function WhoisContactCard({ domainId }: { domainId: string }) {
+  const qc = useQueryClient();
+  const { can } = usePermissions();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<DomainWhoisContact>({
+    name: '', org: '', email: '', phone: '', city: '', street: [], postal_code: '', country_code: '',
+  });
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['domain-whois', domainId],
+    queryFn: () => getDomainWhoisContact(domainId),
+  });
+  const contact = data?.data?.data ?? null;
+  const canEdit = can('domains.manage_dns');
+
+  const startEdit = () => {
+    if (contact) setForm({ ...contact, street: contact.street ?? [] });
+    setEditing(true);
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: () => updateDomainWhoisContact(domainId, form),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domain-whois', domainId] });
+      qc.invalidateQueries({ queryKey: ['domain-logs', domainId] });
+      notifications.show({ title: 'WHOIS updated', message: res.data.message, color: 'green' });
+      setEditing(false);
+    },
+    onError: (e: any) => notifications.show({
+      title: 'Update failed',
+      message: e?.response?.data?.message
+        || Object.values(e?.response?.data?.errors ?? {}).flat().join(' ')
+        || 'Please check the details and try again.',
+      color: 'red',
+    }),
+  });
+
+  return (
+    <Paper withBorder radius="md" p="lg">
+      <Group justify="space-between" mb="md">
+        <Group gap="xs"><IconKey size={18} /><Title order={5}>WHOIS Contact</Title></Group>
+        {!editing && canEdit && contact && (
+          <Button size="xs" variant="light" onClick={startEdit}>Update WHOIS Contact</Button>
+        )}
+      </Group>
+
+      {isLoading ? (
+        <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">Fetching live from the registry…</Text></Group>
+      ) : isError || !contact ? (
+        <Text size="sm" c="dimmed">
+          This domain's registrant predates its client's own registry contact — not self-manageable here.
+        </Text>
+      ) : !editing ? (
+        <Group grow align="flex-start">
+          <Stack gap="md">
+            <Field label="Name:">{contact.name || '—'}</Field>
+            <Field label="Email:">{contact.email || '—'}</Field>
+            <Field label="Phone:">{contact.phone || '—'}</Field>
+          </Stack>
+          <Stack gap="md">
+            <Field label="Company:">{contact.org || '—'}</Field>
+            <Field label="City:">{contact.city || '—'}</Field>
+            <Field label="Country:">{contact.country_code || '—'}</Field>
+          </Stack>
+        </Group>
+      ) : (
+        <Stack gap="xs" maw={460}>
+          <TextInput size="sm" label="Full name" required value={form.name ?? ''}
+            onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} />
+          <TextInput size="sm" label="Email" required type="email" value={form.email ?? ''}
+            onChange={(e) => setForm({ ...form, email: e.currentTarget.value })} />
+          <TextInput size="sm" label="Company" placeholder="optional" value={form.org ?? ''}
+            onChange={(e) => setForm({ ...form, org: e.currentTarget.value })} />
+          <TextInput size="sm" label="Phone" value={form.phone ?? ''}
+            onChange={(e) => setForm({ ...form, phone: e.currentTarget.value })} />
+          <TextInput size="sm" label="City" value={form.city ?? ''}
+            onChange={(e) => setForm({ ...form, city: e.currentTarget.value })} />
+          <TextInput size="sm" label="Address" placeholder="optional" value={form.street?.[0] ?? ''}
+            onChange={(e) => setForm({ ...form, street: [e.currentTarget.value] })} />
+          <Group justify="flex-end" mt="xs">
+            <Button size="xs" variant="default" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="xs" color="green" disabled={!form.name?.trim() || !form.email?.trim()} loading={saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}>
+              Save
             </Button>
           </Group>
         </Stack>
